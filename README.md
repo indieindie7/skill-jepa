@@ -159,6 +159,23 @@ Hit@1 / accuracy-with-abstain, `--ctx prevskill`. Always abstain scores 0.794 wi
 - **Clean labels make abstention the main job:** 85% of prompts need no skill, and only `gate_soft` on seen chats (0.860) beats always abstaining.
 - `gate_soft` with all labels stays the default. Use `--labels clean` to measure "the skill the prompt needed".
 
+## Note: the production trigger/BM25 router, measured the same way (2026-10-23)
+
+The router that actually runs on this machine is not skill-jepa but a hand-built one: weighted trigger words from each SKILL.md + BM25 over the skill bodies + a skill-name hit, with a tf-idf centroid re-ranker learned from past routes. We measured it with the same kind of label (skill read within 10 min of the prompt) over its own log: 1120 logged prompts, 684 with a label, no cross-validation (the centroid re-ranker is trained on the same log, so Hit@1 is optimistic).
+
+| setting | Hit@1 | Hit@3 | abstain rate |
+|---|---|---|---|
+| plain | 0.621 | 0.835 | 0 |
+| + hand-written aliases on 4 skills | 0.613 | 0.835 | <0.013 |
+| + no-match floor 0.35-0.7 on the top score | 0.613 | 0.835 | <0.013 |
+| + floor 0.9 | 0.598 | 0.814 | 0.02-0.04 |
+| + floor 1.1 | 0.579 | 0.763 | 0.10-0.12 |
+
+Takeaways, matching the skill-jepa results above:
+- Hand-written aliases (ideas from the "Beyond Linear Context" critique) did not help: the trigger weights already cover the names, and an alias like "vram" pulls a skill onto prompts that needed another one.
+- A score floor is not an abstention signal. Scores below the floor are rare, and raising it loses correct routes faster than it gains correct abstentions. Prompt-only signals do not say whether a skill is needed; see "Abstention is not solved yet".
+- The hand router's Hit@1 (0.62) is above skill-jepa's seen-chats number (0.57) but the labels and splits differ (in-sample vs 5-fold CV), so this is not a fair comparison; it is the baseline the re-ranker idea below would sit behind.
+
 ## Next ideas
 
 - Stop the prior pull: train with the prompt dropped (prompt dropout) so the predictor learns when to defer to the previous skill.
