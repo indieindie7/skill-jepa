@@ -10,9 +10,13 @@ is seconds of numpy on CPU. Skills with no training pairs still route through th
 The skill-target negatives in the InfoNCE term play the anti-collapse role VICReg plays in image JEPAs.
 
   py -3.13 skilljepa.py embed            embed prompts + skills into data/emb.npz (needs the embedding server)
+  py -3.13 skilljepa.py embedctx         embed "previous prompt + prompt" texts into data/emb_ctx.npz (for --ctx cat)
   py -3.13 skilljepa.py eval [--split session|prompt] cross-validation vs the zero-shot cosine baseline
   py -3.13 skilljepa.py train            fit on all pairs, write data/model.npz
-  py -3.13 skilljepa.py route "prompt"   top-3 skills + energies (or abstain)
+  py -3.13 skilljepa.py route "prompt"   top-3 skills + energies (or abstain); --prev "text" --prev-skill name
+--ctx picks the context: none (prompt only), prev (+ previous prompt), prevskill (+ previous prompt and the skill
+the previous turn used), cat (one embedding of "previous | now" text). Follow-ups like "ok, do it" carry no skill
+signal on their own; the previous turn does.
 """
 import argparse, json, os, sys, urllib.request
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "4")   # 24 BLAS threads on a busy CPU made a 64x768 step take 0.4 s
@@ -50,14 +54,36 @@ def cmd_embed():
              Y=embed([S_PRE.format(n) + skills[n] for n in names]), names=np.array(names))
 
 
-def data():
+def prev_index(pairs):
+    """Index of the previous prompt in the same chat (pairs.jsonl keeps transcript order), -1 for a chat's first."""
+    return np.array([i - 1 if i and pairs[i - 1]["sid"] == p["sid"] else -1 for i, p in enumerate(pairs)])
+
+
+def cmd_embedctx():
+    pairs, _, _ = load(); prv = prev_index(pairs)
+    texts = [Q_PRE + (f"previous: {pairs[j]['q'][:600]} | now: " if j >= 0 else "") + p["q"] for p, j in zip(pairs, prv)]
+    np.savez(os.path.join(D, "emb_ctx.npz"), X=embed(texts))
+
+
+def with_ctx(X, Y, prv, plab, ctx, b=0.5, c=0.5):
+    """Mix the previous turn into the prompt embedding (unit vectors in, unit vectors out)."""
+    if ctx == "none": return X
+    has = (prv >= 0)[:, None]
+    Z = X + b * np.where(has, X[np.maximum(prv, 0)], 0)
+    if ctx == "prevskill": Z = Z + c * np.where((plab >= 0)[:, None], Y[np.maximum(plab, 0)], 0)
+    return Z / np.linalg.norm(Z, axis=1, keepdims=True)
+
+
+def data(ctx="none"):
     pairs, names, _ = load()
     z = np.load(os.path.join(D, "emb.npz"))
     assert list(z["names"]) == names and len(z["X"]) == len(pairs), "data changed: rerun embed"
     idx = {n: i for i, n in enumerate(names)}
     lab = np.array([idx.get(p["skills"][0], -1) for p in pairs])      # -1 = "none" (should abstain)
     allp = [set(idx[s] for s in p["skills"] if s in idx) for p in pairs]
-    return z["X"], z["Y"], lab, allp, np.array([p["sid"] for p in pairs]), names
+    prv = prev_index(pairs); plab = np.where(prv >= 0, lab[np.maximum(prv, 0)], -1)
+    X = np.load(os.path.join(D, "emb_ctx.npz"))["X"] if ctx == "cat" else with_ctx(z["X"], z["Y"], prv, plab, ctx)
+    return X, z["Y"], lab, allp, np.array([p["sid"] for p in pairs]), names, plab
 
 
 class Predictor:
@@ -127,18 +153,22 @@ def report(E, lab, allp, tau):
             "false_route_on_none": route[~L].mean() if (~L).any() else 0.0, "abstain_on_labelled": (~route[L]).mean()}
 
 
-def cmd_eval(folds, split="session", **kw):
-    X, Y, lab, allp, sid, _ = data()
+def cmd_eval(folds, split="session", ctx="none", **kw):
+    X, Y, lab, allp, sid, _, plab = data(ctx)
     if split == "prompt": sid = np.arange(len(sid)).astype(str)   # projects seen in training (ongoing chats)
     us = np.unique(sid); r = np.random.default_rng(0); r.shuffle(us); grp = {s: i % folds for i, s in enumerate(us)}
-    f = np.array([grp[s] for s in sid]); res = {"zero_shot_cosine": [], "knn_prompts": [], "skill_jepa": []}
+    f = np.array([grp[s] for s in sid])
+    res = {"zero_shot_cosine": [], "knn_prompts": [], "skill_jepa": [], "repeat_prev_skill": []}
     for k in range(folds):
         tr, te = f != k, f == k
         if not (lab[te] >= 0).any(): continue
         P = fit(X[tr], Y, lab[tr], **kw)
         atr, ate = [allp[i] for i in np.where(tr)[0]], [allp[i] for i in np.where(te)[0]]
-        for name, model in (("zero_shot_cosine", None), ("knn_prompts", "knn"), ("skill_jepa", P)):
-            if model == "knn":   # tau tuned on the train fold leave-one-out would cost more; reuse train energies with k+1
+        for name, model in (("zero_shot_cosine", None), ("knn_prompts", "knn"), ("skill_jepa", P), ("repeat_prev_skill", "rep")):
+            if model == "rep":   # baseline: route to whatever skill the previous turn used, abstain if it used none
+                E = np.ones((len(lab), len(Y)), np.float32); E[plab >= 0, plab[plab >= 0]] = 0
+                rep = report(E[te], lab[te], ate, 0.5)
+            elif model == "knn":   # tau tuned on the train fold leave-one-out would cost more; reuse train energies with k+1
                 tau = tune_tau(knn_energies(X[tr], lab[tr], X[tr], len(Y)), lab[tr], atr)
                 rep = report(knn_energies(X[tr], lab[tr], X[te], len(Y)), lab[te], ate, tau)
             else:
@@ -150,30 +180,40 @@ def cmd_eval(folds, split="session", **kw):
         w = np.array([n for _, n in rows], float)
         out[name] = {m: round(float(np.average([r[m] for r, _ in rows], weights=w)), 3) for m in rows[0][0]}
     out["always_abstain_acc"] = round(float((lab < 0).mean()), 3)
-    out["split"] = split
+    out["split"], out["ctx"] = split, ctx
     out["n"] = {"prompts": len(lab), "labelled": int((lab >= 0).sum()), "skills": len(Y), "sessions": len(us), "folds": folds}
-    print(json.dumps(out, indent=1)); json.dump(out, open(os.path.join(D, f"eval-{split}.json"), "w"), indent=1)
+    print(json.dumps(out, indent=1)); json.dump(out, open(os.path.join(D, f"eval-{split}-{ctx}.json"), "w"), indent=1)
 
 
-def cmd_train(**kw):
-    X, Y, lab, allp, _, names = data(); P = fit(X, Y, lab, **kw)
+def cmd_train(ctx="none", **kw):
+    X, Y, lab, allp, _, names, _ = data(ctx); P = fit(X, Y, lab, **kw)
     tau = tune_tau(energies(P, X, Y), lab, allp)
-    np.savez(os.path.join(D, "model.npz"), W1=P.W1, b1=P.b1, W2=P.W2, Y=Y, names=np.array(names), tau=tau)
+    np.savez(os.path.join(D, "model.npz"), W1=P.W1, b1=P.b1, W2=P.W2, Y=Y, names=np.array(names), tau=tau, ctx=ctx)
     print("model.npz written, tau", round(tau, 3))
 
 
-def cmd_route(q):
+def cmd_route(q, prev=None, prev_skill=None):
     z = np.load(os.path.join(D, "model.npz")); P = Predictor(z["W1"].shape[0]); P.W1, P.b1, P.W2 = z["W1"], z["b1"], z["W2"]
-    e = energies(P, embed([Q_PRE + q]), z["Y"])[0]; o = e.argsort()[:3]
+    ctx, names = str(z["ctx"]) if "ctx" in z else "none", list(z["names"])
+    if ctx == "cat":
+        x = embed([Q_PRE + (f"previous: {prev[:600]} | now: " if prev else "") + q])
+    else:
+        x = embed([Q_PRE + q] + ([Q_PRE + prev] if prev else []))
+        X = np.vstack([x[1:], x[:1]]) if prev else x; prv = np.array([-1, 0] if prev else [-1])
+        ps = names.index(prev_skill) if prev_skill in names else -1; plab = np.array([-1, ps] if prev else [ps])
+        x = with_ctx(X, z["Y"], prv, plab, ctx)[-1:]
+    e = energies(P, x, z["Y"])[0]; o = e.argsort()[:3]
     print(json.dumps({"route": None if e[o[0]] > z["tau"] else str(z["names"][o[0]]),
                       "top3": [[str(z["names"][i]), round(float(e[i]), 3)] for i in o], "tau": round(float(z["tau"]), 3)}))
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["embed", "eval", "train", "route"]); ap.add_argument("q", nargs="?")
+    ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["embed", "embedctx", "eval", "train", "route"]); ap.add_argument("q", nargs="?")
     ap.add_argument("--folds", type=int, default=5); ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--alpha", type=float, default=2.0); ap.add_argument("--split", choices=["session", "prompt"], default="session")
+    ap.add_argument("--ctx", choices=["none", "prev", "prevskill", "cat"], default="none")
+    ap.add_argument("--prev"); ap.add_argument("--prev-skill")
     a = ap.parse_args()
     kw = {"epochs": a.epochs, "alpha": a.alpha}
-    {"embed": cmd_embed, "eval": lambda: cmd_eval(a.folds, a.split, **kw), "train": lambda: cmd_train(**kw),
-     "route": lambda: cmd_route(a.q)}[a.cmd]()
+    {"embed": cmd_embed, "embedctx": cmd_embedctx, "eval": lambda: cmd_eval(a.folds, a.split, a.ctx, **kw),
+     "train": lambda: cmd_train(a.ctx, **kw), "route": lambda: cmd_route(a.q, a.prev, a.prev_skill)}[a.cmd]()

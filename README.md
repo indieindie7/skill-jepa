@@ -50,14 +50,43 @@ python skilljepa.py embed
 python skilljepa.py eval --split session   # or --split prompt
 python skilljepa.py train
 python skilljepa.py route "summarize this youtube video for me"
+python skilljepa.py eval --split session --ctx prevskill   # previous-turn context
 ```
 
 - **Endpoint:** set `SKILLJEPA_EMB_URL` to use a different embeddings endpoint.
 - **Requirements:** NumPy and Python 3.10+.
 
+## Previous-turn context (`--ctx`)
+
+Many prompts are follow-ups ("ok, do it") that only make sense given the turn before. `--ctx` adds that turn:
+- `prev`: x + 0.5 · embedding of the previous prompt;
+- `prevskill`: also + 0.5 · target embedding of the skill the previous turn used (known at routing time);
+- `cat`: one embedding of the text `previous: … | now: …` (`python skilljepa.py embedctx` first).
+
+A new baseline, `repeat_prev_skill`, just routes to whatever the previous turn used.
+
+Hit@1 (Hit@3), same data and folds as above:
+
+| ctx | router | unseen chats | seen chats |
+|---|---|---|---|
+| none | zero-shot | 0.225 (0.389) | 0.233 (0.422) |
+| none | skill-jepa | 0.234 (0.388) | 0.568 (0.726) |
+| — | repeat_prev_skill | 0.419 (0.431) | 0.415 (0.430) |
+| prev | skill-jepa | 0.244 (0.374) | 0.638 (0.821) |
+| cat | zero-shot | 0.293 (0.443) | 0.317 (0.474) |
+| prevskill | **zero-shot** | **0.500 (0.628)** | 0.484 (0.643) |
+| prevskill | kNN | 0.299 (0.390) | 0.616 (0.817) |
+| prevskill | **skill-jepa** | 0.304 (0.539) | **0.647 (0.804)** |
+
+- **The previous turn is the strongest signal.** Just repeating last turn's skill beats every prompt-only router on unseen chats.
+- **Unseen chats:** zero-shot cosine with `prevskill` context wins (0.50). The trained predictor falls to 0.30 there, because it learns each chat's frequent skills and pulls bare follow-ups toward them. For example, "ok do it" after a video-notes turn routes to video-notes zero-shot, but the predictor sends it to the user's most-used skill.
+- **Seen chats:** skill-jepa with context is best (0.647 Hit@1, up from 0.568).
+- **Abstention:** routing accuracy with abstain reaches 0.803–0.806 with `prevskill`, the first setting to beat "always abstain" (0.793), but only just.
+
 ## Next ideas
 
-- Add the previous turn to the context (fixes follow-up prompts).
+- Gate between routers: zero-shot + context for new chats, skill-jepa once a chat has history.
+- Make the predictor context-aware (feed the previous skill as a separate input, not mixed into x) so it cannot overwrite it.
 - Use cleaner labels (first skill read only, or the skill a hook logged as useful).
 - Train a separate abstain head.
 - Use the router as a re-ranker behind a trigger/BM25 router rather than as the primary router.
