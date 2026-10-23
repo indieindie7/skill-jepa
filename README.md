@@ -117,9 +117,26 @@ A third split, `--split time`, tests on the last 30% of every chat, so each chat
 
 Route with the gate: `python skilljepa.py route "ok do it" --prev "watch this video and write notes" --prev-skill video-notes --hist 0`
 
+## Follow-up detector (`gate_soft_followup`), negative result
+
+**Rule.** A prompt is a follow-up when it is short (≤ w words) or barely prefers any skill on its own (zero-shot margin ≤ m). A follow-up repeats the previous turn's decision: that turn's skill, or abstain if it used none. The thresholds w and m are tuned on an inner 20% hold-out of each training fold.
+
+**Tuning picked "never" on every split.** A sweep on the time split's test set shows why. Baseline is `gate_soft` (`prevskill`): Hit@1 0.580, accuracy-with-abstain 0.699.
+
+| words ≤ | margin ≤ | prompts flagged | Hit@1 | accuracy-with-abstain |
+|---|---|---|---|---|
+| 0 | 0.005 | 18% | 0.578 | 0.706 |
+| 3 | off | 20% | 0.521 | 0.718 |
+| 0 | 0.04 | 74% | 0.541 | 0.731 |
+| 12 | 0.04 | 88% | 0.511 | 0.727 |
+
+- **Hit@1 drops at every setting.** Short prompts do not reliably reuse the last skill, and the `prevskill` context already gives the router the previous skill as a hint without forcing it.
+- **The accuracy-with-abstain gain is misleading.** It comes from copying the previous turn's "no skill", which is what `repeat_prev_skill` does (0.734).
+- **What would fix the pull:** better labels (which skill each turn actually needed) or an abstain head, not a heuristic override.
+
 ## Next ideas
 
-- Stop the prior pull: detect content-free follow-ups (short prompt, low zero-shot margin) and trust the previous skill; or train with the prompt dropped so the predictor learns when to defer.
+- Stop the prior pull: train with the prompt dropped (prompt dropout) so the predictor learns when to defer to the previous skill.
 - Use cleaner labels (first skill read only, or the skill a hook logged as useful).
 - Train a separate abstain head.
 - Use the router as a re-ranker behind a trigger/BM25 router rather than as the primary router.

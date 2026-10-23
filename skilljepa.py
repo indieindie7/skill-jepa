@@ -173,6 +173,28 @@ def gate(Ez, Ej, hist, k=GATE_K, soft=False, taus=None):
     return (E, (1 - w) * taus[0] + w * taus[1]) if taus else E
 
 
+def followup(E, tau, fu, plab):
+    """Follow-up override: a content-free prompt repeats the previous turn's decision (its skill, or abstain if it used none)."""
+    E, tau = E.copy(), np.array(tau, np.float32) * np.ones(len(E), np.float32)
+    E[fu] = 1; m = fu & (plab >= 0); E[m, plab[m]] = 0; tau[fu] = 0.5
+    return E, tau
+
+
+def is_followup(words, margin, plab, wmax, mmax):
+    """Short prompt (<= wmax words) or a prompt alone that barely prefers any skill (zero-shot margin <= mmax),
+    in a chat that has a previous turn."""
+    return (plab > -2) & ((words <= wmax) | (margin <= mmax))
+
+
+def fu_feats(Y):
+    """Words per prompt and the prompt-only zero-shot margin (2nd best minus best energy)."""
+    pairs, _, _ = load(); E0 = 1 - np.load(os.path.join(D, "emb.npz"))["X"] @ Y.T; E0.sort(1)
+    return np.array([len(p["q"].split()) for p in pairs]), E0[:, 1] - E0[:, 0]
+
+
+FU_GRID = [(w, m) for w in (0, 2, 3, 5, 8, 12) for m in (-1, 0.005, 0.01, 0.02, 0.04)]
+
+
 def cmd_eval(folds, split="session", ctx="none", **kw):
     X, Y, lab, allp, sid, _, plab = data(ctx); chat = sid.copy()
     if split == "prompt": sid = np.arange(len(sid)).astype(str)   # projects seen in training (ongoing chats)
@@ -182,7 +204,10 @@ def cmd_eval(folds, split="session", ctx="none", **kw):
         pos = np.zeros(len(chat)); n = {}
         for i, c in enumerate(chat): pos[i] = n.get(c, 0); n[c] = pos[i] + 1
         f = (pos < 0.7 * np.array([n[c] for c in chat])).astype(int); folds = 1
-    res = {"zero_shot_cosine": [], "knn_prompts": [], "skill_jepa": [], "repeat_prev_skill": [], "gate_hard": [], "gate_soft": []}
+    res = {"zero_shot_cosine": [], "knn_prompts": [], "skill_jepa": [], "repeat_prev_skill": [], "gate_hard": [], "gate_soft": [],
+           "gate_soft_followup": []}
+    words, margin = fu_feats(Y); first = np.r_[True, chat[1:] != chat[:-1]]; pl2 = np.where(first, -2, plab)   # -2 = chat's first prompt
+    fu_pick = []
     for k in range(folds):
         tr, te = f != k, f == k
         if not (lab[te] >= 0).any(): continue
@@ -192,8 +217,24 @@ def cmd_eval(folds, split="session", ctx="none", **kw):
         for c in chat[tr & (lab >= 0)]: cnt[c] = cnt.get(c, 0) + 1
         hist = np.array([cnt.get(c, 0) for c in chat], np.float32) - (tr & (lab >= 0))   # a train prompt is not its own history
         for name, model in (("zero_shot_cosine", None), ("knn_prompts", "knn"), ("skill_jepa", P), ("repeat_prev_skill", "rep"),
-                            ("gate_hard", "gh"), ("gate_soft", "gs")):
-            if model in ("gh", "gs"):
+                            ("gate_hard", "gh"), ("gate_soft", "gs"), ("gate_soft_followup", "gf")):
+            if model == "gf":   # thresholds tuned on an inner hold-out of the train fold (in-train the predictor fits every prompt)
+                def gated(P_, trm):
+                    c = {}
+                    for ch in chat[trm & (lab >= 0)]: c[ch] = c.get(ch, 0) + 1
+                    h = np.array([c.get(ch, 0) for ch in chat], np.float32) - (trm & (lab >= 0))
+                    Ez, Ej = energies(None, X, Y), energies(P_, X, Y); al = [allp[i] for i in np.where(trm)[0]]
+                    return gate(Ez, Ej, h, soft=True, taus=(tune_tau(Ez[trm], lab[trm], al), tune_tau(Ej[trm], lab[trm], al)))
+                def acc(Eg, tau, w, m, idx):
+                    E2, t2 = followup(Eg[idx], tau[idx], is_followup(words[idx], margin[idx], pl2[idx], w, m), plab[idx])
+                    return report(E2, lab[idx], [allp[i] for i in np.where(idx)[0]], t2)
+                ho = tr & (np.random.default_rng(k).random(len(lab)) < 0.2); itr = tr & ~ho
+                Ei, ti = gated(fit(X[itr], Y, lab[itr], **kw), itr)
+                w, m = max(FU_GRID, key=lambda g: (lambda r: r["acc_with_abstain"] + r["hit1"])(acc(Ei, ti, *g, ho)))
+                Eg, tau = gated(P, tr)
+                fu_pick.append((w, m, round(float(is_followup(words[te], margin[te], pl2[te], w, m).mean()), 3)))
+                rep = acc(Eg, tau, w, m, te)
+            elif model in ("gh", "gs"):
                 Ez, Ej = energies(None, X, Y), energies(P, X, Y)
                 taus = (tune_tau(Ez[tr], lab[tr], atr), tune_tau(Ej[tr], lab[tr], atr))
                 Eg, tau = gate(Ez, Ej, hist, soft=model == "gs", taus=taus)
@@ -213,7 +254,7 @@ def cmd_eval(folds, split="session", ctx="none", **kw):
         w = np.array([n for _, n in rows], float)
         out[name] = {m: round(float(np.average([r[m] for r, _ in rows], weights=w)), 3) for m in rows[0][0]}
     out["always_abstain_acc"] = round(float((lab < 0).mean()), 3)
-    out["split"], out["ctx"] = split, ctx
+    out["split"], out["ctx"], out["followup_words_margin_share"] = split, ctx, fu_pick
     out["n"] = {"prompts": len(lab), "labelled": int((lab >= 0).sum()), "skills": len(Y), "sessions": len(np.unique(chat)), "folds": folds}
     print(json.dumps(out, indent=1)); json.dump(out, open(os.path.join(D, f"eval-{split}-{ctx}.json"), "w"), indent=1)
 
