@@ -101,15 +101,25 @@ A third split, `--split time`, tests on the last 30% of every chat, so each chat
 | **gate_soft** | **0.500** (0.628) | 0.645 (0.804) | **0.580 (0.731)** |
 
 - `gate_soft` is best or within 0.002 of the best on every split, so it is the one to use.
-- **Known gap, abstain threshold:** τ is tuned on training prompts, which all have history. On new chats the gate therefore abstains too often: accuracy-with-abstain is 0.793 against 0.801 for plain zero-shot. Tune τ per branch.
-- **Known gap, follow-ups:** with long history the predictor still pulls bare follow-ups toward the chat's most-used skill. Feeding the previous skill as a separate predictor input should fix that.
+- **Abstain threshold, fixed:** τ is now tuned per branch (zero-shot and predictor), and the gate blends the two τ with the same weight it gives the energies.
+  - New chats: accuracy-with-abstain goes from 0.793 to 0.801, the same as zero-shot.
+  - Seen chats: 0.815 to 0.818.
+  - Time split: 0.705 to 0.699.
+  - Example: "ok do it" after a video-notes turn in a new chat now routes to video-notes; before, it abstained.
+- **Previous skill as a separate input (`--ctx sep`), negative result.** The predictor gets the previous skill's target as extra input columns beside the `prevskill` mix. It did not stop the pull: with long history, "ok do it" still goes to the chat's most-used skill. It also costs Hit@1:
+
+  | split | `gate_soft` Hit@1, `prevskill` | `gate_soft` Hit@1, `sep` |
+  |---|---|---|
+  | seen | 0.645 | 0.625 |
+  | time | 0.580 | 0.553 |
+
+  The pull comes from the predictor memorising each chat's skill prior, not from missing input. `prevskill` stays the default.
 
 Route with the gate: `python skilljepa.py route "ok do it" --prev "watch this video and write notes" --prev-skill video-notes --hist 0`
 
 ## Next ideas
 
-- Tune τ per gate branch (new chat vs chat with history).
-- Make the predictor context-aware (feed the previous skill as a separate input, not mixed into x) so it cannot overwrite it.
+- Stop the prior pull: detect content-free follow-ups (short prompt, low zero-shot margin) and trust the previous skill; or train with the prompt dropped so the predictor learns when to defer.
 - Use cleaner labels (first skill read only, or the skill a hook logged as useful).
 - Train a separate abstain head.
 - Use the router as a re-ranker behind a trigger/BM25 router rather than as the primary router.

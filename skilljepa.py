@@ -77,6 +77,13 @@ def with_ctx(X, Y, prv, plab, ctx, b=0.5, c=0.5):
     return Z / np.linalg.norm(Z, axis=1, keepdims=True)
 
 
+def sep_input(X, Y, prv, plab):
+    """ctx sep: the prevskill mix as the residual path, plus the previous skill's target as extra predictor input
+    (zeros when the previous turn used none), so the hidden layer can learn "follow-up = same skill" explicitly."""
+    S = np.where((plab >= 0)[:, None], Y[np.maximum(plab, 0)], 0).astype(np.float32)
+    return np.hstack([with_ctx(X, Y, prv, plab, "prevskill"), S])
+
+
 def data(ctx="none"):
     pairs, names, _ = load()
     z = np.load(os.path.join(D, "emb.npz"))
@@ -86,18 +93,19 @@ def data(ctx="none"):
     allp = [set(idx[s] for s in p["skills"] if s in idx) for p in pairs]
     prv = prev_index(pairs); plab = np.where(prv >= 0, lab[np.maximum(prv, 0)], -1)
     X = np.load(os.path.join(D, "emb_ctx.npz"))["X"] if ctx == "cat" else with_ctx(z["X"], z["Y"], prv, plab, ctx)
+    if ctx == "sep": X = sep_input(z["X"], z["Y"], prv, plab)
     return X, z["Y"], lab, allp, np.array([p["sid"] for p in pairs]), names, plab
 
 
 class Predictor:
-    def __init__(s, d, h=512, seed=0):
-        r = np.random.default_rng(seed)
-        s.W1 = r.normal(0, d ** -0.5, (d, h)).astype(np.float32); s.b1 = np.zeros(h, np.float32)
-        s.W2 = np.zeros((h, d), np.float32)                      # starts as identity: g(x) = x = zero-shot baseline
+    def __init__(s, d, h=512, seed=0, dout=None):
+        r = np.random.default_rng(seed); dout = dout or d       # d > dout: extra input columns (ctx sep: previous skill)
+        s.W1 = r.normal(0, dout ** -0.5, (d, h)).astype(np.float32); s.b1 = np.zeros(h, np.float32)
+        s.W2 = np.zeros((h, dout), np.float32)                   # starts as identity: g(x) = x = zero-shot baseline
         s.ps = [s.W1, s.b1, s.W2]; s.m = [np.zeros_like(p) for p in s.ps]; s.v = [np.zeros_like(p) for p in s.ps]; s.t = 0
 
     def fwd(s, x):
-        a = x @ s.W1 + s.b1; h = np.maximum(a, 0); p = x + h @ s.W2
+        a = x @ s.W1 + s.b1; h = np.maximum(a, 0); p = x[:, :s.W2.shape[1]] + h @ s.W2
         n = np.linalg.norm(p, axis=1, keepdims=True); return p / n, (x, a, h, n)
 
     def step(s, x, y_idx, Y, alpha=0.5, temp=0.05, lr=1e-3, wd=1e-4):
@@ -119,7 +127,7 @@ class Predictor:
 
 
 def fit(X, Y, lab, epochs=40, bs=64, seed=0, **kw):
-    P = Predictor(X.shape[1], seed=seed); r = np.random.default_rng(seed); tr = np.where(lab >= 0)[0]
+    P = Predictor(X.shape[1], seed=seed, dout=Y.shape[1]); r = np.random.default_rng(seed); tr = np.where(lab >= 0)[0]
     for _ in range(epochs):
         r.shuffle(tr)
         for i in range(0, len(tr), bs): P.step(X[tr[i:i + bs]], lab[tr[i:i + bs]], Y, **kw)
@@ -127,7 +135,7 @@ def fit(X, Y, lab, epochs=40, bs=64, seed=0, **kw):
 
 
 def energies(P, X, Y):
-    return 1 - (P.fwd(X)[0] if P else X) @ Y.T
+    return 1 - (P.fwd(X)[0] if P else X[:, :Y.shape[1]]) @ Y.T
 
 
 def knn_energies(Xtr, labtr, X, nY, k=10):
@@ -156,11 +164,13 @@ def report(E, lab, allp, tau):
             "false_route_on_none": route[~L].mean() if (~L).any() else 0.0, "abstain_on_labelled": (~route[L]).mean()}
 
 
-def gate(Ez, Ej, hist, k=GATE_K, soft=False):
+def gate(Ez, Ej, hist, k=GATE_K, soft=False, taus=None):
     """Router gate: zero-shot energies for a chat with little labelled history, the trained predictor once it has some.
-    hist = labelled prompts this chat already had in training; soft blends with weight hist / (hist + k)."""
-    w = (hist / (hist + k) if soft else (hist >= k).astype(np.float32))[:, None]
-    return (1 - w) * Ez + w * Ej
+    hist = labelled prompts this chat already had in training; soft blends with weight hist / (hist + k).
+    taus = (tau_zero_shot, tau_predictor), each tuned on its own branch, blended with the same weight per prompt."""
+    w = (hist / (hist + k) if soft else (hist >= k).astype(np.float32))
+    E = (1 - w[:, None]) * Ez + w[:, None] * Ej
+    return (E, (1 - w) * taus[0] + w * taus[1]) if taus else E
 
 
 def cmd_eval(folds, split="session", ctx="none", **kw):
@@ -184,8 +194,10 @@ def cmd_eval(folds, split="session", ctx="none", **kw):
         for name, model in (("zero_shot_cosine", None), ("knn_prompts", "knn"), ("skill_jepa", P), ("repeat_prev_skill", "rep"),
                             ("gate_hard", "gh"), ("gate_soft", "gs")):
             if model in ("gh", "gs"):
-                Eg = gate(energies(None, X, Y), energies(P, X, Y), hist, soft=model == "gs")
-                rep = report(Eg[te], lab[te], ate, tune_tau(Eg[tr], lab[tr], atr))
+                Ez, Ej = energies(None, X, Y), energies(P, X, Y)
+                taus = (tune_tau(Ez[tr], lab[tr], atr), tune_tau(Ej[tr], lab[tr], atr))
+                Eg, tau = gate(Ez, Ej, hist, soft=model == "gs", taus=taus)
+                rep = report(Eg[te], lab[te], ate, tau[te])
             elif model == "rep":   # baseline: route to whatever skill the previous turn used, abstain if it used none
                 E = np.ones((len(lab), len(Y)), np.float32); E[plab >= 0, plab[plab >= 0]] = 0
                 rep = report(E[te], lab[te], ate, 0.5)
@@ -208,13 +220,13 @@ def cmd_eval(folds, split="session", ctx="none", **kw):
 
 def cmd_train(ctx="none", **kw):
     X, Y, lab, allp, _, names, _ = data(ctx); P = fit(X, Y, lab, **kw)
-    tau = tune_tau(energies(P, X, Y), lab, allp)
-    np.savez(os.path.join(D, "model.npz"), W1=P.W1, b1=P.b1, W2=P.W2, Y=Y, names=np.array(names), tau=tau, ctx=ctx)
+    tau, tau_z = tune_tau(energies(P, X, Y), lab, allp), tune_tau(energies(None, X, Y), lab, allp)
+    np.savez(os.path.join(D, "model.npz"), W1=P.W1, b1=P.b1, W2=P.W2, Y=Y, names=np.array(names), tau=tau, tau_z=tau_z, ctx=ctx)
     print("model.npz written, tau", round(tau, 3))
 
 
 def cmd_route(q, prev=None, prev_skill=None, hist=None):
-    z = np.load(os.path.join(D, "model.npz")); P = Predictor(z["W1"].shape[0]); P.W1, P.b1, P.W2 = z["W1"], z["b1"], z["W2"]
+    z = np.load(os.path.join(D, "model.npz")); P = Predictor(z["W1"].shape[0], dout=z["W2"].shape[1]); P.W1, P.b1, P.W2 = z["W1"], z["b1"], z["W2"]
     ctx, names = str(z["ctx"]) if "ctx" in z else "none", list(z["names"])
     if ctx == "cat":
         x = embed([Q_PRE + (f"previous: {prev[:600]} | now: " if prev else "") + q])
@@ -222,19 +234,21 @@ def cmd_route(q, prev=None, prev_skill=None, hist=None):
         x = embed([Q_PRE + q] + ([Q_PRE + prev] if prev else []))
         X = np.vstack([x[1:], x[:1]]) if prev else x; prv = np.array([-1, 0] if prev else [-1])
         ps = names.index(prev_skill) if prev_skill in names else -1; plab = np.array([-1, ps] if prev else [ps])
-        x = with_ctx(X, z["Y"], prv, plab, ctx)[-1:]
-    e = energies(P, x, z["Y"])
-    if hist is not None: e = gate(energies(None, x, z["Y"]), e, np.array([hist], np.float32), soft=True)
+        x = (sep_input(X, z["Y"], prv, plab) if ctx == "sep" else with_ctx(X, z["Y"], prv, plab, ctx))[-1:]
+    e, tau = energies(P, x, z["Y"]), float(z["tau"])
+    if hist is not None:
+        e, t = gate(energies(None, x, z["Y"]), e, np.array([hist], np.float32), soft=True,
+                    taus=(float(z["tau_z"]) if "tau_z" in z else tau, tau)); tau = float(t[0])
     e = e[0]; o = e.argsort()[:3]
-    print(json.dumps({"route": None if e[o[0]] > z["tau"] else str(z["names"][o[0]]),
-                      "top3": [[str(z["names"][i]), round(float(e[i]), 3)] for i in o], "tau": round(float(z["tau"]), 3)}))
+    print(json.dumps({"route": None if e[o[0]] > tau else str(z["names"][o[0]]),
+                      "top3": [[str(z["names"][i]), round(float(e[i]), 3)] for i in o], "tau": round(tau, 3)}))
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["embed", "embedctx", "eval", "train", "route"]); ap.add_argument("q", nargs="?")
     ap.add_argument("--folds", type=int, default=5); ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--alpha", type=float, default=2.0); ap.add_argument("--split", choices=["session", "prompt", "time"], default="session")
-    ap.add_argument("--ctx", choices=["none", "prev", "prevskill", "cat"], default="none")
+    ap.add_argument("--ctx", choices=["none", "prev", "prevskill", "cat", "sep"], default="none")
     ap.add_argument("--prev"); ap.add_argument("--prev-skill")
     ap.add_argument("--hist", type=int, help="labelled prompts this chat has had (turns on the soft gate)")
     a = ap.parse_args()
