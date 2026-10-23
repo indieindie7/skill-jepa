@@ -13,7 +13,9 @@ The skill-target negatives in the InfoNCE term play the anti-collapse role VICRe
   py -3.13 skilljepa.py embedctx         embed "previous prompt + prompt" texts into data/emb_ctx.npz (for --ctx cat)
   py -3.13 skilljepa.py eval [--split session|prompt] cross-validation vs the zero-shot cosine baseline
   py -3.13 skilljepa.py train            fit on all pairs, write data/model.npz
-  py -3.13 skilljepa.py route "prompt"   top-3 skills + energies (or abstain); --prev "text" --prev-skill name
+  py -3.13 skilljepa.py route "prompt"   top-3 skills + energies (or abstain); --prev "text" --prev-skill name --hist N
+--split time tests on the last 30% of every chat (each chat brings its own past). The gate routers use zero-shot energies
+for a chat with little labelled history and the trained predictor once it has GATE_K prompts (soft: blend by n/(n+k)).
 --ctx picks the context: none (prompt only), prev (+ previous prompt), prevskill (+ previous prompt and the skill
 the previous turn used), cat (one embedding of "previous | now" text). Follow-ups like "ok, do it" carry no skill
 signal on their own; the previous turn does.
@@ -25,6 +27,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 D = os.path.join(HERE, "data")
 EMB_URL = os.environ.get("SKILLJEPA_EMB_URL", "http://127.0.0.1:8084/v1/embeddings")
+GATE_K = 5   # labelled prompts a chat needs before the gate trusts the trained predictor
 Q_PRE, S_PRE = "task: search result | query: ", "title: {} | text: "   # EmbeddingGemma prompt formats
 
 
@@ -153,19 +156,37 @@ def report(E, lab, allp, tau):
             "false_route_on_none": route[~L].mean() if (~L).any() else 0.0, "abstain_on_labelled": (~route[L]).mean()}
 
 
+def gate(Ez, Ej, hist, k=GATE_K, soft=False):
+    """Router gate: zero-shot energies for a chat with little labelled history, the trained predictor once it has some.
+    hist = labelled prompts this chat already had in training; soft blends with weight hist / (hist + k)."""
+    w = (hist / (hist + k) if soft else (hist >= k).astype(np.float32))[:, None]
+    return (1 - w) * Ez + w * Ej
+
+
 def cmd_eval(folds, split="session", ctx="none", **kw):
-    X, Y, lab, allp, sid, _, plab = data(ctx)
+    X, Y, lab, allp, sid, _, plab = data(ctx); chat = sid.copy()
     if split == "prompt": sid = np.arange(len(sid)).astype(str)   # projects seen in training (ongoing chats)
     us = np.unique(sid); r = np.random.default_rng(0); r.shuffle(us); grp = {s: i % folds for i, s in enumerate(us)}
     f = np.array([grp[s] for s in sid])
-    res = {"zero_shot_cosine": [], "knn_prompts": [], "skill_jepa": [], "repeat_prev_skill": []}
+    if split == "time":   # one fold: the last 30% of every chat is the test set, so chats arrive with their own past
+        pos = np.zeros(len(chat)); n = {}
+        for i, c in enumerate(chat): pos[i] = n.get(c, 0); n[c] = pos[i] + 1
+        f = (pos < 0.7 * np.array([n[c] for c in chat])).astype(int); folds = 1
+    res = {"zero_shot_cosine": [], "knn_prompts": [], "skill_jepa": [], "repeat_prev_skill": [], "gate_hard": [], "gate_soft": []}
     for k in range(folds):
         tr, te = f != k, f == k
         if not (lab[te] >= 0).any(): continue
         P = fit(X[tr], Y, lab[tr], **kw)
         atr, ate = [allp[i] for i in np.where(tr)[0]], [allp[i] for i in np.where(te)[0]]
-        for name, model in (("zero_shot_cosine", None), ("knn_prompts", "knn"), ("skill_jepa", P), ("repeat_prev_skill", "rep")):
-            if model == "rep":   # baseline: route to whatever skill the previous turn used, abstain if it used none
+        cnt = {}
+        for c in chat[tr & (lab >= 0)]: cnt[c] = cnt.get(c, 0) + 1
+        hist = np.array([cnt.get(c, 0) for c in chat], np.float32) - (tr & (lab >= 0))   # a train prompt is not its own history
+        for name, model in (("zero_shot_cosine", None), ("knn_prompts", "knn"), ("skill_jepa", P), ("repeat_prev_skill", "rep"),
+                            ("gate_hard", "gh"), ("gate_soft", "gs")):
+            if model in ("gh", "gs"):
+                Eg = gate(energies(None, X, Y), energies(P, X, Y), hist, soft=model == "gs")
+                rep = report(Eg[te], lab[te], ate, tune_tau(Eg[tr], lab[tr], atr))
+            elif model == "rep":   # baseline: route to whatever skill the previous turn used, abstain if it used none
                 E = np.ones((len(lab), len(Y)), np.float32); E[plab >= 0, plab[plab >= 0]] = 0
                 rep = report(E[te], lab[te], ate, 0.5)
             elif model == "knn":   # tau tuned on the train fold leave-one-out would cost more; reuse train energies with k+1
@@ -181,7 +202,7 @@ def cmd_eval(folds, split="session", ctx="none", **kw):
         out[name] = {m: round(float(np.average([r[m] for r, _ in rows], weights=w)), 3) for m in rows[0][0]}
     out["always_abstain_acc"] = round(float((lab < 0).mean()), 3)
     out["split"], out["ctx"] = split, ctx
-    out["n"] = {"prompts": len(lab), "labelled": int((lab >= 0).sum()), "skills": len(Y), "sessions": len(us), "folds": folds}
+    out["n"] = {"prompts": len(lab), "labelled": int((lab >= 0).sum()), "skills": len(Y), "sessions": len(np.unique(chat)), "folds": folds}
     print(json.dumps(out, indent=1)); json.dump(out, open(os.path.join(D, f"eval-{split}-{ctx}.json"), "w"), indent=1)
 
 
@@ -192,7 +213,7 @@ def cmd_train(ctx="none", **kw):
     print("model.npz written, tau", round(tau, 3))
 
 
-def cmd_route(q, prev=None, prev_skill=None):
+def cmd_route(q, prev=None, prev_skill=None, hist=None):
     z = np.load(os.path.join(D, "model.npz")); P = Predictor(z["W1"].shape[0]); P.W1, P.b1, P.W2 = z["W1"], z["b1"], z["W2"]
     ctx, names = str(z["ctx"]) if "ctx" in z else "none", list(z["names"])
     if ctx == "cat":
@@ -202,7 +223,9 @@ def cmd_route(q, prev=None, prev_skill=None):
         X = np.vstack([x[1:], x[:1]]) if prev else x; prv = np.array([-1, 0] if prev else [-1])
         ps = names.index(prev_skill) if prev_skill in names else -1; plab = np.array([-1, ps] if prev else [ps])
         x = with_ctx(X, z["Y"], prv, plab, ctx)[-1:]
-    e = energies(P, x, z["Y"])[0]; o = e.argsort()[:3]
+    e = energies(P, x, z["Y"])
+    if hist is not None: e = gate(energies(None, x, z["Y"]), e, np.array([hist], np.float32), soft=True)
+    e = e[0]; o = e.argsort()[:3]
     print(json.dumps({"route": None if e[o[0]] > z["tau"] else str(z["names"][o[0]]),
                       "top3": [[str(z["names"][i]), round(float(e[i]), 3)] for i in o], "tau": round(float(z["tau"]), 3)}))
 
@@ -210,10 +233,11 @@ def cmd_route(q, prev=None, prev_skill=None):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["embed", "embedctx", "eval", "train", "route"]); ap.add_argument("q", nargs="?")
     ap.add_argument("--folds", type=int, default=5); ap.add_argument("--epochs", type=int, default=30)
-    ap.add_argument("--alpha", type=float, default=2.0); ap.add_argument("--split", choices=["session", "prompt"], default="session")
+    ap.add_argument("--alpha", type=float, default=2.0); ap.add_argument("--split", choices=["session", "prompt", "time"], default="session")
     ap.add_argument("--ctx", choices=["none", "prev", "prevskill", "cat"], default="none")
     ap.add_argument("--prev"); ap.add_argument("--prev-skill")
+    ap.add_argument("--hist", type=int, help="labelled prompts this chat has had (turns on the soft gate)")
     a = ap.parse_args()
     kw = {"epochs": a.epochs, "alpha": a.alpha}
     {"embed": cmd_embed, "embedctx": cmd_embedctx, "eval": lambda: cmd_eval(a.folds, a.split, a.ctx, **kw),
-     "train": lambda: cmd_train(a.ctx, **kw), "route": lambda: cmd_route(a.q, a.prev, a.prev_skill)}[a.cmd]()
+     "train": lambda: cmd_train(a.ctx, **kw), "route": lambda: cmd_route(a.q, a.prev, a.prev_skill, a.hist)}[a.cmd]()

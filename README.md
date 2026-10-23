@@ -83,9 +83,32 @@ Hit@1 (Hit@3), same data and folds as above:
 - **Seen chats:** skill-jepa with context is best (0.647 Hit@1, up from 0.568).
 - **Abstention:** routing accuracy with abstain reaches 0.803–0.806 with `prevskill`, the first setting to beat "always abstain" (0.793), but only just.
 
+## Gate router (`gate_hard`, `gate_soft`)
+
+Zero-shot + context generalises to new chats, and the trained predictor wins once a chat has history, so the gate uses both. `hist` is the number of labelled prompts the chat already had in training, with `k = 5`:
+- `gate_hard` uses the predictor once `hist ≥ k`, and zero-shot before that.
+- `gate_soft` blends the two energies with weight `hist / (hist + k)`.
+
+A third split, `--split time`, tests on the last 30% of every chat, so each chat arrives with its own past. That is the realistic case. All rows below use `--ctx prevskill`.
+
+| router | unseen chats | seen chats | time split |
+|---|---|---|---|
+| zero-shot | **0.500** (0.628) | 0.484 (0.643) | 0.551 (0.681) |
+| kNN | 0.299 (0.390) | 0.616 (0.817) | 0.499 (0.640) |
+| skill-jepa | 0.304 (0.539) | **0.647** (0.804) | 0.570 (0.706) |
+| repeat_prev_skill | 0.419 (0.431) | 0.415 (0.430) | 0.519 (0.533) |
+| gate_hard | **0.500** (0.628) | 0.645 (0.801) | 0.573 (0.704) |
+| **gate_soft** | **0.500** (0.628) | 0.645 (0.804) | **0.580 (0.731)** |
+
+- `gate_soft` is best or within 0.002 of the best on every split, so it is the one to use.
+- **Known gap, abstain threshold:** τ is tuned on training prompts, which all have history. On new chats the gate therefore abstains too often: accuracy-with-abstain is 0.793 against 0.801 for plain zero-shot. Tune τ per branch.
+- **Known gap, follow-ups:** with long history the predictor still pulls bare follow-ups toward the chat's most-used skill. Feeding the previous skill as a separate predictor input should fix that.
+
+Route with the gate: `python skilljepa.py route "ok do it" --prev "watch this video and write notes" --prev-skill video-notes --hist 0`
+
 ## Next ideas
 
-- Gate between routers: zero-shot + context for new chats, skill-jepa once a chat has history.
+- Tune τ per gate branch (new chat vs chat with history).
 - Make the predictor context-aware (feed the previous skill as a separate input, not mixed into x) so it cannot overwrite it.
 - Use cleaner labels (first skill read only, or the skill a hook logged as useful).
 - Train a separate abstain head.
