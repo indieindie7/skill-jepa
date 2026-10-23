@@ -3,6 +3,8 @@
 A user prompt is labelled with the skills the assistant touched before the next user prompt:
 Skill tool calls, reads of skills/<name>/..., and skill-brief API calls (/api/skill/<name>).
 Prompts that touched no skill get the label "none" (the router should abstain on those).
+"skills_clean" keeps only real use: Skill tool calls, skill-brief API calls and Read/Grep/Glob of skill files. It drops
+edits (Edit/Write/Bash writing a skill file), which are mostly end-of-turn skill upkeep, not the skill the prompt needed.
 
   py -3.13 build_data.py [--projects DIR] [--skills DIR] [--out data/pairs.jsonl]
 Writes one JSON line per prompt: {"sid", "t", "q", "skills": [...]} and data/skills.json {name: description}.
@@ -36,11 +38,13 @@ def text_of(content):
 
 
 def touched(block):
-    if block.get("type") != "tool_use": return []
+    """(skills touched, used) where used = False for an edit of a skill file."""
+    if block.get("type") != "tool_use": return [], True
     inp = block.get("input") or {}
-    if block.get("name") == "Skill": return [str(inp.get("skill", "")).split(":")[-1]]
-    s = json.dumps(inp)
-    return path_re.findall(s) + api_re.findall(s)
+    if block.get("name") == "Skill": return [str(inp.get("skill", "")).split(":")[-1]], True
+    s = json.dumps(inp); name = block.get("name")
+    used = name in ("Read", "Grep", "Glob") or (name in ("Bash", "PowerShell") and not re.search(r">>|> *\S*SKILL|open\([^)]*['\"][wa]", s))
+    return path_re.findall(s) + api_re.findall(s), used
 
 
 def clean(q):
@@ -56,6 +60,7 @@ with open(a.out, "w", encoding="utf-8") as out:
             global n
             if cur and 3 <= len(cur["q"]) <= 2000:
                 cur["skills"] = [s for s in dict.fromkeys(cur["skills"]) if s in skills] or ["none"]
+                cur["skills_clean"] = [s for s in dict.fromkeys(cur["skills_clean"]) if s in skills] or ["none"]
                 out.write(json.dumps(cur, ensure_ascii=False) + "\n"); n += 1
         for line in open(f, encoding="utf-8", errors="replace"):
             if '"type":"user"' not in line and '"type":"assistant"' not in line and '"type": "user"' not in line \
@@ -70,10 +75,12 @@ with open(a.out, "w", encoding="utf-8") as out:
                 q = clean(q)
                 if not q or q.startswith(NOISE): continue
                 flush()
-                cur = {"sid": j.get("sessionId", os.path.basename(f))[:8], "t": j.get("timestamp", ""), "q": q, "skills": []}
+                cur = {"sid": j.get("sessionId", os.path.basename(f))[:8], "t": j.get("timestamp", ""), "q": q, "skills": [], "skills_clean": []}
             elif j.get("type") == "assistant" and cur is not None and isinstance(msg.get("content"), list):
                 for b in msg["content"]:
-                    if isinstance(b, dict): cur["skills"] += touched(b)
+                    if isinstance(b, dict):
+                        t, used = touched(b); cur["skills"] += t
+                        if used: cur["skills_clean"] += t
         flush()
 json.dump(skills, open(os.path.join(os.path.dirname(a.out), "skills.json"), "w", encoding="utf-8"), indent=1)
 print(f"{n} prompts, {len(skills)} skills -> {a.out}")

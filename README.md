@@ -51,6 +51,7 @@ python skilljepa.py eval --split session   # or --split prompt
 python skilljepa.py train
 python skilljepa.py route "summarize this youtube video for me"
 python skilljepa.py eval --split session --ctx prevskill   # previous-turn context
+python skilljepa.py eval --split time --ctx prevskill --labels clean   # labels without skill-file edits
 ```
 
 - **Endpoint:** set `SKILLJEPA_EMB_URL` to use a different embeddings endpoint.
@@ -134,11 +135,34 @@ Route with the gate: `python skilljepa.py route "ok do it" --prev "watch this vi
 - **The accuracy-with-abstain gain is misleading.** It comes from copying the previous turn's "no skill", which is what `repeat_prev_skill` does (0.734).
 - **What would fix the pull:** better labels (which skill each turn actually needed) or an abstain head, not a heuristic override.
 
+## Clean labels and an abstain head
+
+**Clean labels (`--labels clean`).** `build_data.py` now also writes `skills_clean`, which drops skill files the turn only *edited* (Edit/Write, or a shell command writing a SKILL file). Those are mostly end-of-turn skill upkeep, not the skill the prompt needed. 636 of 4185 prompts keep a clean label (862 with all labels), and the first label changes on 264 prompts.
+
+**Abstain head (`gate_soft_abstain_head`).** Routing comes from `gate_soft`; a separate logistic regression decides route vs abstain. Its inputs are the prompt embedding, the zero-shot best energy and margin, word count, whether the previous turn used a skill or none, and the chat's history. Its threshold is tuned on the train fold.
+
+Hit@1 / accuracy-with-abstain, `--ctx prevskill`. Always abstain scores 0.794 with all labels and 0.848 with clean labels on the first two splits:
+
+| labels | router | unseen chats | seen chats | time split |
+|---|---|---|---|---|
+| all | zero-shot | 0.499 / 0.802 | 0.484 / 0.801 | 0.550 / 0.677 |
+| all | repeat_prev_skill | 0.419 / 0.801 | 0.415 / 0.801 | 0.520 / **0.738** |
+| all | gate_soft | 0.499 / **0.802** | 0.647 / 0.820 | 0.578 / 0.707 |
+| all | **gate_soft_abstain_head** | 0.499 / 0.794 | 0.647 / **0.826** | 0.578 / 0.735 |
+| clean | zero-shot | 0.427 / 0.848 | 0.409 / 0.848 | 0.471 / 0.751 |
+| clean | skill-jepa | 0.371 / 0.817 | 0.578 / 0.834 | 0.532 / 0.736 |
+| clean | gate_soft | 0.427 / 0.848 | 0.585 / **0.860** | 0.545 / 0.748 |
+| clean | gate_soft_abstain_head | 0.427 / 0.848 | 0.585 / 0.842 | 0.545 / **0.755** |
+
+- **Abstain head: small, mixed gain.** It helps where the chat has history (seen chats +0.006; time split +0.028 with all labels, +0.007 with clean labels), but still does not beat `repeat_prev_skill` on the time split (0.735 vs 0.738). On new chats it falls back to always abstaining. Whether a turn needs a skill is mostly not visible in the prompt.
+- **Clean labels: the trained predictor holds its lead.** Hit@1 drops for every router, because the easy "upkeep" labels are gone. The predictor's gain over zero-shot on seen chats stays about the same (+0.17 clean, +0.16 all). On new chats the gap between zero-shot and the predictor narrows (0.427 vs 0.371, was 0.499 vs 0.302), so much of the predictor's chat-prior pull came from upkeep labels.
+- **Clean labels make abstention the main job:** 85% of prompts need no skill, and only `gate_soft` on seen chats (0.860) beats always abstaining.
+- `gate_soft` with all labels stays the default. Use `--labels clean` to measure "the skill the prompt needed".
+
 ## Next ideas
 
 - Stop the prior pull: train with the prompt dropped (prompt dropout) so the predictor learns when to defer to the previous skill.
-- Use cleaner labels (first skill read only, or the skill a hook logged as useful).
-- Train a separate abstain head.
 - Use the router as a re-ranker behind a trigger/BM25 router rather than as the primary router.
+- Abstention needs a signal from outside the prompt, such as the agent's own first tool call.
 
 MIT licence.

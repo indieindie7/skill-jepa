@@ -84,13 +84,13 @@ def sep_input(X, Y, prv, plab):
     return np.hstack([with_ctx(X, Y, prv, plab, "prevskill"), S])
 
 
-def data(ctx="none"):
-    pairs, names, _ = load()
+def data(ctx="none", labels="all"):
+    pairs, names, _ = load(); key = "skills_clean" if labels == "clean" else "skills"
     z = np.load(os.path.join(D, "emb.npz"))
     assert list(z["names"]) == names and len(z["X"]) == len(pairs), "data changed: rerun embed"
     idx = {n: i for i, n in enumerate(names)}
-    lab = np.array([idx.get(p["skills"][0], -1) for p in pairs])      # -1 = "none" (should abstain)
-    allp = [set(idx[s] for s in p["skills"] if s in idx) for p in pairs]
+    lab = np.array([idx.get(p[key][0], -1) for p in pairs])      # -1 = "none" (should abstain)
+    allp = [set(idx[s] for s in p[key] if s in idx) for p in pairs]
     prv = prev_index(pairs); plab = np.where(prv >= 0, lab[np.maximum(prv, 0)], -1)
     X = np.load(os.path.join(D, "emb_ctx.npz"))["X"] if ctx == "cat" else with_ctx(z["X"], z["Y"], prv, plab, ctx)
     if ctx == "sep": X = sep_input(z["X"], z["Y"], prv, plab)
@@ -192,11 +192,33 @@ def fu_feats(Y):
     return np.array([len(p["q"].split()) for p in pairs]), E0[:, 1] - E0[:, 0]
 
 
+def abstain_feats(X, Ez, words, plab, hist):
+    """Abstain-head input: prompt embedding, zero-shot best energy and margin, length, previous-turn skill/none, history."""
+    Es = np.sort(Ez, 1)
+    f = np.c_[Es[:, 0], Es[:, 1] - Es[:, 0], np.log1p(words), plab >= 0, plab == -1, np.log1p(hist)].astype(np.float32)
+    f = (f - f.mean(0)) / (f.std(0) + 1e-6)
+    return np.hstack([X[:, :768], f, np.ones((len(X), 1), np.float32)])
+
+
+def fit_logreg(F, y, l2=1e-2, lr=0.5, iters=400):
+    """Plain logistic regression (full batch gradient descent): p(prompt needs a skill)."""
+    w = np.zeros(F.shape[1], np.float32)
+    for _ in range(iters):
+        p = 1 / (1 + np.exp(-F @ w)); w -= lr * (F.T @ (p - y) / len(y) + l2 * w)
+    return w
+
+
+def head_tau(p, E, lab, allp):
+    """Probability threshold maximising accuracy-with-abstain (route when p > thr)."""
+    top = E.argmin(1); hit = np.array([t in s for t, s in zip(top, allp)])
+    return max((np.where(p > t, hit, lab < 0).mean(), float(t)) for t in np.quantile(p, np.linspace(0, 1, 101)))[1]
+
+
 FU_GRID = [(w, m) for w in (0, 2, 3, 5, 8, 12) for m in (-1, 0.005, 0.01, 0.02, 0.04)]
 
 
-def cmd_eval(folds, split="session", ctx="none", **kw):
-    X, Y, lab, allp, sid, _, plab = data(ctx); chat = sid.copy()
+def cmd_eval(folds, split="session", ctx="none", labels="all", **kw):
+    X, Y, lab, allp, sid, _, plab = data(ctx, labels); chat = sid.copy()
     if split == "prompt": sid = np.arange(len(sid)).astype(str)   # projects seen in training (ongoing chats)
     us = np.unique(sid); r = np.random.default_rng(0); r.shuffle(us); grp = {s: i % folds for i, s in enumerate(us)}
     f = np.array([grp[s] for s in sid])
@@ -205,7 +227,7 @@ def cmd_eval(folds, split="session", ctx="none", **kw):
         for i, c in enumerate(chat): pos[i] = n.get(c, 0); n[c] = pos[i] + 1
         f = (pos < 0.7 * np.array([n[c] for c in chat])).astype(int); folds = 1
     res = {"zero_shot_cosine": [], "knn_prompts": [], "skill_jepa": [], "repeat_prev_skill": [], "gate_hard": [], "gate_soft": [],
-           "gate_soft_followup": []}
+           "gate_soft_followup": [], "gate_soft_abstain_head": []}
     words, margin = fu_feats(Y); first = np.r_[True, chat[1:] != chat[:-1]]; pl2 = np.where(first, -2, plab)   # -2 = chat's first prompt
     fu_pick = []
     for k in range(folds):
@@ -217,7 +239,12 @@ def cmd_eval(folds, split="session", ctx="none", **kw):
         for c in chat[tr & (lab >= 0)]: cnt[c] = cnt.get(c, 0) + 1
         hist = np.array([cnt.get(c, 0) for c in chat], np.float32) - (tr & (lab >= 0))   # a train prompt is not its own history
         for name, model in (("zero_shot_cosine", None), ("knn_prompts", "knn"), ("skill_jepa", P), ("repeat_prev_skill", "rep"),
-                            ("gate_hard", "gh"), ("gate_soft", "gs"), ("gate_soft_followup", "gf")):
+                            ("gate_hard", "gh"), ("gate_soft", "gs"), ("gate_soft_followup", "gf"), ("gate_soft_abstain_head", "ga")):
+            if model == "ga":   # routing from gate_soft, the route/abstain decision from a separate logistic head
+                Ez, Ej = energies(None, X, Y), energies(P, X, Y); Eg = gate(Ez, Ej, hist, soft=True)
+                F = abstain_feats(X, Ez, words, pl2, hist); hw = fit_logreg(F[tr], (lab[tr] >= 0).astype(np.float32))
+                pr = 1 / (1 + np.exp(-F @ hw)); thr = head_tau(pr[tr], Eg[tr], lab[tr], atr)
+                rep = report(Eg[te], lab[te], ate, np.where(pr[te] > thr, 9.0, -9.0)); res[name].append((rep, int(te.sum()))); continue
             if model == "gf":   # thresholds tuned on an inner hold-out of the train fold (in-train the predictor fits every prompt)
                 def gated(P_, trm):
                     c = {}
@@ -256,7 +283,7 @@ def cmd_eval(folds, split="session", ctx="none", **kw):
     out["always_abstain_acc"] = round(float((lab < 0).mean()), 3)
     out["split"], out["ctx"], out["followup_words_margin_share"] = split, ctx, fu_pick
     out["n"] = {"prompts": len(lab), "labelled": int((lab >= 0).sum()), "skills": len(Y), "sessions": len(np.unique(chat)), "folds": folds}
-    print(json.dumps(out, indent=1)); json.dump(out, open(os.path.join(D, f"eval-{split}-{ctx}.json"), "w"), indent=1)
+    print(json.dumps(out, indent=1)); json.dump(out, open(os.path.join(D, f"eval-{split}-{ctx}-{labels}.json"), "w"), indent=1)
 
 
 def cmd_train(ctx="none", **kw):
@@ -290,9 +317,10 @@ if __name__ == "__main__":
     ap.add_argument("--folds", type=int, default=5); ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--alpha", type=float, default=2.0); ap.add_argument("--split", choices=["session", "prompt", "time"], default="session")
     ap.add_argument("--ctx", choices=["none", "prev", "prevskill", "cat", "sep"], default="none")
+    ap.add_argument("--labels", choices=["all", "clean"], default="all", help="clean = drop skill-file edits from labels")
     ap.add_argument("--prev"); ap.add_argument("--prev-skill")
     ap.add_argument("--hist", type=int, help="labelled prompts this chat has had (turns on the soft gate)")
     a = ap.parse_args()
     kw = {"epochs": a.epochs, "alpha": a.alpha}
-    {"embed": cmd_embed, "embedctx": cmd_embedctx, "eval": lambda: cmd_eval(a.folds, a.split, a.ctx, **kw),
+    {"embed": cmd_embed, "embedctx": cmd_embedctx, "eval": lambda: cmd_eval(a.folds, a.split, a.ctx, a.labels, **kw),
      "train": lambda: cmd_train(a.ctx, **kw), "route": lambda: cmd_route(a.q, a.prev, a.prev_skill, a.hist)}[a.cmd]()
