@@ -1,0 +1,1546 @@
+
+===== PAGE 1 (IMG_20261024_0001.pdf) =====
+rt\t.
+;
+Modular Cognitive Architecture:
+Freeform Composition Across
+Reasoning, IÂIorld, and Expert Models
+Research status
+Known
+. [SRC] Íhe current router is a ccnservative lexical retrieval kernei: it discovers
+locaUcatalog skills, ranks names/descriptions/headings with BM25 plus feature-
+hash similarity, then either renders a CLI card or injects bounded sections
+through the prompt hook. Selection does not prove execution or task success. á
+. [SRCI The evolved design already contains the right governance primitives:
+compact typed state, retained conflicts and rejected paths, reference-based
+memory layered expansion, route proofs, abstention, and outcome-stage
+instrumentation. ê
+. [SRC] Existing memory systems do not dominate acros§ retrieval,learning, long-
+range understanding, and forgetting; modular§ must therefore be
+benchmarked rather than assumed superior. §
+Missing
+. [ol No measured causal chain yet connects route -+ injected skill * followed
+procedure + successful outcome.
+. [aJ No local benchmark yet estahlishes whether adapter composition, separate
+specialists, or cognitive MoE rcuting gives the best quatrty per VRAMilatency.
+. [a] rú/eight-Iàvel interpretabitity and exact knowtedge deletian remain unsolved..
+Confliets
+. Explicit skills are highly auditabie but expensive in token/context use.
+. Neural specialists are compact and fast but only behaviorally reversihle-not
+semantically reversible.
+. Latent world models support simulation, hut predictions can he plausible and"
+wrong.
+
+===== PAGE 2 (IMG_20261024_0002.pdf) =====
+. Parameter sharing improves reuse while increasing interference and correlated
+failure risk.
+§xeeutive abstract
+I§YNI This paper proposes a freeform msdular cognitive architecture, not a
+three-stage pipeline. Reasoning, world, and expertlprocedural capahilities form
+three sparsely activated families. A request may âctivate only a procedural expert;
+an ambiguous investigation may activate reasoning plus retrieval; a stateful
+interventipn may additionally activate a world model. Composition can change at
+every problem-solving step.
+The control substrate is an auditable typed state, X,, backed by source references. A
+dynamic controller evaluates the current goal, phase, uncertainty, evidence
+requirements, previous outcomes, protection class, and resource budget. It then
+selects both:
+1". representation - token text, ty;led symbolicigraph state, or learned latent
+state; and
+2. model composition - external specialist services, adapters, sparse experts, or
+a hybrid.
+The central lifecycle is:
+\texttt{SKILL. md}
+\rightarrsw \text {executions}
+\rightarrow \text{verified traces}
+\rightarrow \text{shadow expert}
+\rightarrow \text{production specialization}
+The explicit skill remains the canonical authority, regression oracle, provenance
+ancho4 and fallback. Specialized weights are treated as cache-like compiled
+beh*vior, never as the sole source of truth.
+
+===== PAGE 3 (IMG_20261024_0003.pdf) =====
+t,
+{ç'{
+The recommended near-term architecture is hybrid: keep explicit skills and sipedstate; add a system-level world-model predictor onry where ffansition reasoning isrequired; experiment with isolated reasoning and procedural LoRAs; retain explicitabstention and external verification. A full cognitive MoE, automatic online weightupdates, and deletion of distilled át<iUs ur* OrJ*rrur..
+C*re thesis
+Explicit knowledge bootstraps
+specialization; typed state
+governs cornposition; neural
+experts optim ize repeated
+behavior; observation_not
+prediction-updates factual
+state.
+FrÊmary fmfsífser
+If sparse modular composition
+does not outperíorm a carefully
+Ínstrurnented sin g le_rnodel
+baseline under matched
+quality, latenry, VRAM, and
+auditability, the added
+architecture is unjustified.
+L. Baseline mapping
+documents two execution paths sharingdiscovery indexing and ranking, with the prompt hook later loading bounded skill_
+loaded late4 making retrieval m
+body sections. I Or,Iy name, des
+etadata
+cription
+a deliberate boftleneck. 1
+and headings are indexed; body text is
+The current system's invariants shourd become the contror prane:
+Existing property
+Local preced.ence and pinned catalog
+revision Authority and version resolution
+BM25 plus lexical feature hash Conservative
+baseline
+candidate-generation
+Bounded section injection Context compiler
+Exact-only automatic deduplication Lossless ffansformafion rule
+
+===== PAGE 4 (IMG_20261024_0004.pdf) =====
+Existing proper§
+No-match behavior
+Generalized architectural role
+A-bstention primitive
+Route proof Composition certifi cate
+Usage/outcome record Training-data admission gate
+Inter-module communication
+substrate
+0utput
+r.,qrr /X
+The architecture should preserve the
+ranking rather than calibrated truth,
+demonstrate compliance. I
+router's explicit warning that scores indicate
+and that injected guidance does not
+2. Taxonomy: preventing category collapse
+Must not be
+treated as
+Reasoning
+model
+Wortrd model
+How shautd" this
+problembe
+decornpaseg
+searched, tested,
+verified ar
+debugged?
+Plans,
+hlryotheses,
+search policies,
+tests, uncertainty
+updates
+Source of domain
+facts
+What state is the
+envíranment in
+and what may
+h*ppen afier an
+üctiÜn?
+Predicted
+transitions,
+counterfactual
+rollouts, causal
+hypotheses
+Observation or
+verified truth
+Family Question
+answered
+
+===== PAGE 5 (IMG_20261024_0005.pdf) =====
+\_[
+Family Question Output
+answered Must nOt be
+treated as
+Expertl 1,líhst pr*cedure, Commands, General plannerprocedural tool or d"*main workfiows,model trünsformaüon structured
+or environment
+shauld" be
+simulator
+upplied?
+transformadons,
+specialist outputs
+A single module may implement multiple capabilities, but every invocation mustdeclare a role contract. For example, an LtM proposing a debugging plan acffi as areasoning model; the same base with a database adapter acts as a proceduralexpert. Classiflcation is by contract and evidence boundary-nor by model identity.
+Sparse acfivation examples
+. Exact known workflow: procedural skill only.
+'Novel proof or diagnosis: reasoning moder + evidence toors.
+'fflf#ã::hanse: procedural expert first; wortd modei onry if predicted side
+. Long-horizon operaüonal interyention: reasoning + world simulation +procedural expert.
+' §imple factual retrieval: n'ne of the neurar specialists may he requiredbeyond retrieval and bounded generation.
+3. Freeform architecture
+The architecture berow uses x as a shared fyped bus rather than imposingr*as**"ràng * r,r;*rld - *xff#f t ordering. Ttris builds on the prior design,s compact,reference-based state and its three projections*machine state, veriflcationcertificate and reader view. a
+§
+
+===== PAGE 6 (IMG_20261024_0006.pdf) =====
+Educational Systems Architectlre
+&{*á*1ar, S{uiti-trâtpr*x**t*;i**;r1, I}),lra:tri*aâ1y ütrmpm«l
+trsmd
+<+ 6!úrtatli+nnlÍiü*{tii!1
++----"I Oinirrrl,il:]skitrlx1ÍIrÍl
+i....= ci{ru}i{s d6re 1g§{ Êd}
+í::rrl lbcdicriffi[rdvsiíiêd)
+L:l verif*t1/{i'«rrd
+{t{D li:ed irFirilc LttülrôerlÍ .ía om k]rrut(liitiú]
+. s!k*'.t,' «úrljÉnr! i roenr
+'.,iiei-i.gildlnlúi,ri:ux)
+íbtiln$l
+pYrdi.íior + í;úa
+l rat)itai *rr,:sr*tartrs,
+"$r;Jrr;l sií1, lil rr,rú, a!rri1i:{arx,r.
+iilud.icli,)i lljliir?ürf
+Figure 1,: Freefarm cognítive erchitecture: aWpedsfflfe bus coardínates §par§e
+activ*tioníicrüss reüsarúng, world ündpracedar*l capa"bílitíes, wkile guürded
+rsprssentütíün cünverters *nd un abserv*tían §üte preventlatent predtctiüns fram
+becaming facts.
+Proposed state schema
+***f irm*d f&rltsl-{\J§ltr*, *#ilr** í'*f , *pân, r*ví:;.i*n}1,
+{rtrl $*rv$1: it}rt * | {va l**, t:. :tutrt:, v *r íti.* r} I,
+í]r4){íiútÍ*11s |{va L**, *r*de I-.--íd, *í1í:*rÍsj-fl ty, har ir*rt) },
+L.,*-+L,,,.^+ú{- Là Vt" t ry ilu I r ru:'f a r
+. ár*r. lnrl *lrla,alhÔ4*{r
+*.,^r, ---.. "
+1. tJr41t__t_ \tJtt 1 t L_:3 1
+.:,,r i trhla *i.i inr'e
+r Êr!râ.:Ê!rfirÍ inir h+nd JPq,,.,..*.".'l
+pr{rI+,i;. i** c las$f r,
+*i;r!{,,*t{I*k*nr, lntetrclr. VítÂli1. ** i i.5 },
+3
+::. "foltcy:=:
+l1eúmxt .Í Íqtlhin*f)
+êi!iv4i! :
+ddÉrii.i!4
+ê.xilíir.:'::
+âhô§1in :
+,âIihâÊk
+orÍ$üh (dft;simr:
+lãk
+( i!!*!«:1!!lilif.4§l{
+slÍf&ÀM : :
+&
+Rtas4üring ss&l§
+. l)horü*
+. vafií(§lion
+. deb!§iing
+.mpile /
+ümrlx
+lIuâldNi
+sTÀrBbu* tE)
+{: Ír,à1, líd5, hyF)t}rÉ*r, e»Íli.t"!
+qn«Ítáin1í êlid{ff, rêfs, buú§e.l
+fxpatlpocau*rd*
+§ r Sl(l['t--md
+i tmlg@
+World models
+. rràrL§i!-unpRdiriir»i
+§rped symbolic /
+Svaph 6tâte
+r mliti6i elítiüÍ ' :.,
+! tyrldvíãble* '
+. (t'ljtuãint}
+t km*le{xe xr+ph
+. ppô*;a dÉB'Rtid§
+. wid*»x lukl ,
+§âtrrraLlar!8rrâsÊI
+í,IÉn eorrtÉxt-
+',§ u*rtn*v
+$..nlnro*'* t t'i*t*1'
+.m t\uriaenl§
+Õ3 qliarÀlísr
+eia {e.A.! e!.|r,: &arhÉl
+X{t + 1}
+lierilicd ftist Yüte
+{e.teptedi
+Oüwrysti@ I
+vêrl§iâtíd gâtê
+!tltíkinlI ÀrPsúÍn!
+d@deto-
+$ndidatt€Íryde
+{gri*í.d1
+*{x+ ç
+Itsdil*eú s8t §talü
+tfnxtr úqdeli)
+ffiv
+. (,,oiÍJilrLr.n,lúlJs,gt
+. flilllllôlôdnl Rpt{ nl;!lihh içl:lÔ& !urh,I. eü. I
+Lêârtr€d htmt repretrntfl tion§
+. ü§l<-*pNiliü lstrst rtale
+
+===== PAGE 7 (IMG_20261024_0007.pdf) =====
+-t\
+Family Question
+answered
+What procedure,
+tooí ar d"omsín
+transformation
+shauídbe
+Commands,
+workflows,
+structured
+transformations,
+specialist outputs
+General planner
+or environment
+simulator
+tput
+Expertl
+procedural
+model
+*pplied?
+A single module may implement multiple capabilities, hut every invocation must
+declare a role contract. For example, an LLM proposing a debugging plan acts as a
+reasoning model; the same base wittr a database adapter acts as a procedural
+expert. Classification is hy contract and evidence boundary-not by model identity.
+Sparse activation example§
+. Exact known urorkflow: procedural skill only.
+. Novel proof or diagnosis: reasoning model + evidence tools.
+. Ileployment change: procedural expert flrst; world model cnly if predicted side
+effects matter.
+. Long-horizon operatianal interrention: reasoning + world simulation +
+procedural expert.
+. §imple factual retrieval: none of the neural specialists may be required
+beyond retrieval and bounded generation.
+3. Freeform architecture
+The architecture helow uses x as a shared fyped bus rather than imposing
+r*as*ni*ç * ar*rld * *xpev"t ordering. This builds on the prior design's compact,
+reference-based state and its three projections-machine state, verification
+cefiificate and. reader view. ?'
+\
+F
+dr,16 t
+J
+,ê
+Must not be
+treated. as
+
+===== PAGE 8 (IMG_20261024_0008.pdf) =====
+Edueatiçnal §ystems Àrchitecture
+M*r{u3ar, },át3{i-Sejrr*xer:rtati*na}, &yr:x*i*aÍ?y {r*l3an*rt
+C\rlx0i
+lf,grnd
+IJidir(rtiariôl ar,ô,*r tid,
+{)illnr!, iri* !!ilrtridí)
+Cnr'!:r-t!n Êrltú í91üÍ{(l}
+laa,íli(rrúil in*l v*riiiad)
+,. srl{t I (orlisur{,i rtqtr.
+'. .1r9,:tJf .n!ait núf^llril
+pr"di.tirÍ + ,ü(a
+itlii;rvsi rípr.rs.rirdri*).
+::àslwl.írrà iiasilíí! í!rJt{r1rrt.
+t:;t ikl1ia d *a'é: t tiinu.t1.
+Figur* 1: Fr*efarm cosnitíve architsüure: ütypedsÍâfe hus coordinates sparse
+actívütían &crüss reüsoíttng, worlú ündprocedurs"l cüpü"bilities, while guürded
+rspresentatíon converters and en observatiün sfrte prevent latent predtctions from
+be*aming facts.
+Proposed state schema
+l-:{
+':*rtíj"rtr'*rl {"tr r rlívitlr:e, aau{;*.....j at, sl}ârl, rrvr:}r,r'}1,
+*hs*rvât1*fi *{{va]:ue, r.rlle, r,,er tí' tr:r }},
+1;r*iÍrc: L*;:ll{v,tlile. rrr;rrlel ..i tl, i,*c*rLajr.ty, 1,,,r irirlrj l,
+r', I iu+ h\rÍ1.!thêqr:':
+r'-r irrt, trril hrrrrnt ir*c*"J'''"""---$'
+tions,
+-hand\*s,
+r* s*$,
+-io 1.111,r:*!, trRAl,, call.s:,
+\:-":r,,,--....i
+derodê-{c
+$ndldate
+rmpik IliMÍlÉ
+itmrrrd)
+Trrred symbollç I
+, ' ,§faph fitate I
+. üíi§6.í:s,istiôf,f
+. rÍr{d1Ill!àls
+| Ípllri8!EtÉ:::::: :::
+r ntw-lrdxrgreÉ
+t Ê$ôSi 4Étf!3í6!
+r siênm.ür& r:
+tmdà í!144!ú), ,,
+! :1ák::::::::::: ,:
+':j:!-trtralpll4* ::,
+!:::telt*tjill! :::
+:fbl&ry:::::::
+{tÀ*$l{n I Í!§:timà.r}
+:I!iJÊ!6 (.le;siE§,,:
+:!:,àr:tivãk ::::::::::
+*!ial*ri:i tuninfi*üÍ
+«>1/,1.RÀM ::::: r iâlihà.k
+â$Binic
+I deê(í!áts
+:!::f.xnlrt*
+&
+Xeâscüingw.H,
+r pÉtu:lqÊ
+i dqoeleitiçtr
+1 wtlíiêli§. deblgging
+?oÊ y'
+dffi
+{Erardsl}
+STATE bus (I)
+{j gúà1, fnúh, h}B}th4*s, .mjli 1s,
+uceíâiÉ)' eridi-â.r rers, hudset
+World models
+ffi r LaHli§rrp[{iltif!1
+r ml!&gfrcMl glmqlaiisn
+Ndtural-lBrrstace I
+tôkençqltçâ* t:
+Brl'o*'0,
+Ç1,-Üâlo** 
+I tr«nY
+ffi *ou'"*u
+O, fsrrrBl Íert
+a:lâ 1e.â-. q!r, ls)kel
+ãit+ r.l
+ft*dlctad ftit sia(a
+{à1n,} mü&l§}
+I{l + r}
+\isrifi(d ffrt ilat§
+(sorcpted)
+9â!çdê
+lgltif'{,]i1
+ffiU
+\ u0liruour fl sl(ddi,'g,
+mulimôdsl Êíx{spnritiDn' (q.ioq uiio. m. r
+Leâ.trd Istent représntâtions
+. la§r-spxilí. Jnlvst rtalê
+
+===== PAGE 9 (IMG_20261024_0009.pdf) =====
+Facts, observations and predictions occupy separate namespaces. À latent
+prediction may generate a candidate hypothesis, but only verifled observation can
+promote it to **nfÍrme*i*f,e*âs .
+4. Dynamic composition controller
+Controller decision
+[SYN] At step t, choose module set M,, representation R,, and compute allocation B,:
+(Mr,Rr,B)=argmax I E(goal progress) -]r, cost -]'rrisk -]"runverifi ability l
+subject to authority, protection, abstention and resource constraints.
+Inputs and switching rules
+§ignal Controller response
+Procedure confidently matched; state
+stahle
+Multiple plausibie decompositions
+Candidate actions have uncertain
+downstream effects
+Prediction disagreement 0r pCIor
+calihration
+Add reasoninglsearch expert
+Add world-model simulation
+Deactivate world model; seek
+ohservation
+Missing authoritative evidence Retrieve or ahstain
+Strong verified procedure exists Prefer skill over latent reconstruction
+Budget pressure Compile smaller state; unload
+adapters; use smaller specialist
+I
+",f
+,e
+fl
+§
+Activate procedural expert only
+
+===== PAGE 10 (IMG_20261024_0010.pdf) =====
+Repeated failure under same module
+Controller response
+Escalate model, change
+representation, or fall back
+Failure mode
+Controller elasses
+Fixed pipeline
+Programmed graph
+Learned state-aware
+router
+hybrid
+Simple and observable
+Explicit dependencies
+and fallhacks
+Pays for unnecessary
+modules; compounds
+errors
+Becomes rigid and
+difficult to maintain
+Weak temporal/state
+awareness
+Sparse flat router Efficient
+Hierarchical router Separates family,
+module and budget
+decisions
+Can optimize outcomel
+cost trade-offs
+Eaü routing error
+suppresses correct
+branch
+Dataset bias, weak
+ahstention, opaque
+failures
+Rules enforce authority;
+learning reranks eligihle
+modules
+More instrumentation
+and evaluation
+complexity
+RouteLLM demonstrates that learned routing can optimize strong/weak-model cost-
+quality trade-offs, but it routes between models using preference labels-not
+hetween procedural, reasoning and world capabilities. s The recovered IEPA
+branch similar§ improved seen-session prompts but generalized poorly to held-out
+sessions; it should remain a bounded correction rather than authority. ã
+Stratesy §trength
+§ignal
+
+===== PAGE 11 (IMG_20261024_0011.pdf) =====
+5. Dynamic representation stack
+Representation
+§ped statel
+graph
+Latent
+uteBest Protected
+content
+Text/token Human
+instructions,
+source evidence,
+final generation,
+amhiguous
+semantics
+Exact quotations,
+commands,
+safeguards,
+err0r§
+Context cost,
+position effects,
+implicit relations
+Dependencies,
+conflicts,
+commitments,
+provenance,
+transitions
+Similarity,
+routing, compact
+prediction,
+learned
+dynamics
+IDs, source links,
+authority
+uncertainty type
+Extraction error;
+invented edges;
+schema rigidity
+None as sole
+canonical record
+Opaci§, drift,
+lossy decoding,
+hallucinated
+structure
+Controlled conversion§
+1. Text + trued state: schema-constrained extraction; attach source spans;
+unverifled flelds enter *anrdá*ate , not fa*t .
+2. ffied state -r text: bounded compilation by P0-p3 protection class; preserve
+identifiers, constraints and conflicts verbatim.
+3. §ped state + latent: encode only a versioned projection; retain state hash and
+encoder version.
+4. Latent -+ symholic candidate: decode top-k hypotheses plus uncertainty; 
+.,.i,#,
+9;#prohibit direct factual write-back. 
+.,,,$,
+5. observation + reconciliation: compare predicted and observed d.eitas; store ,,*{ii
+residual/error: undate onlv through a verifier.
+Primary risks
+
+===== PAGE 12 (IMG_20261024_0012.pdf) =====
+}EPA predicts target representations from context representatÍons rather than
+reconstructing raw pixels, suppofiing latent prediction as a compression
+mechanism-but the demonstrated I-JEPA result is visual and does not establish
+reliahle language-agent state transitions. §-
+6" World-model design
+The operational contract is:
+( \Sigma*t, a-t ) \xrightar rour{laí-\theta}
+\widehat {\Delta\Sigma}-{1+t}, \ ;
+p(\Delta),\;
+u, \i
+\text {ass umptions}
+Execution then yields observation ot+r:
+o*{t+1}
+\x rig h t ar row{\text {ver if y I r econci f e} }
+\Sigma-{t+1-}
+Foundational wcrld-model work learned compressed spatial-temporal
+representations and trained policies inside generated environments. § DreamerV3
+combines a recurrent latent transition mod"el, rewardlcontinuatian prediction, and
+imagined trajectories, demonstrating broad control results; this is evidence for
+latent predictive planning, not proof that enterprise language-agent environments
+are similarly iearnable. ?
+Recommended variants
+. Explicit transition rulss: best for deterministic tools and permissions.
+. Domain adapter: shared encoder plus domain-specific transition LoRA.
+. Separate predictive model: strongest isolation and calibration boundary.
+" Latent transition mode} useful for repeated stateful envÍronments with dense
+observations.
+
+===== PAGE 13 (IMG_20261024_0013.pdf) =====
+'uor}3lpard
+uor1Isurxl ou ]nq sloo] pue Euruuqd arrnba.r Áeru uo1]radsul ôpol :luuopdo sI Iêpolu
+pIJoÁÀ V Árpor{lnu }ou's}ssl puu slusodo"rd arnpo.rd aJoJaraq} s}.radxa Buluosuag
+t 'qeu81s uollelgrra^ sE aluapyta q§44
+pue s{nsal uor}n3axa 's}sa} luapuadapul ãuluoddns 'pa11ddns q {teqpaal leuJa}xã
+ou uaqff Suposua.r ape.r3ap uEf, uor1f,arJo]-Jlas )rsulJlul m râ]]aq Álprpuurolne
+lou fl alnduror pãsea.rsu1 ]nq'quuas aa.rl puu uol]f,âJ.ror 'Suqdues paluadal apnlsur
+spoqlatu alndu:or arup-lsôI 6 'uoI]JEJaluI )uaruuoJl/\ua tuor; tuluueld Sulleredas
+uuql Jar{}EJ uol}EÂJasqo pue uor}Je 'Eutuosear Suyrealra}u1 suoddns }lvau
+'ãurddots pue uoIlBtoIIE alndtuol .
+Íuo1]nlosal uoUJrPEJluo3 r
+ÍuopurauaB lsaYrasPãÂ r
+Íturlsa] qsaqtodÁq IESTIEJ r
+luorlurglsleJ pue tu$Bnqap .
+ÍÁrqod i{}JeasfiBÂâlr}âJ r
+Í8uuuu1d pue uCIrllsodurorap .
+: suorlezllelrads âleplpueS
+'ldrrrsue.rl pâ)upuaJâJllpun uE Ja^o lou-slnonoJ lãpolu-plJo^À luuoqdo
+pue sdu3 ã3uaprrra '§asâq]odÁq'spo8 JaÂs alurado ppot{s slsrppads Euruoseag
+utlsap laporu-Euposuag'í
+§ 'âICHIeJ puu pêuJEãI suretuar Eurdderu luluâluuoJl^ua
+- Jleql ]nq'suozrroq.:a§uo1uo Á1.reprrl.rud'$uçuuu1d JCIJ asnuo.rd urvroqs â^eq
+a8en§ue1 o] pã:1u11 slaporu plJo/vr IESnEJ 'pâ]Elnrurs peIãqBI eq ]sntu s1en1reJJa]unoJ
+'slJâJls paÁu1ap pue sJoJJa uorssrlu.:ad'sdo-ou'suollle pêIIEJ Eulpnlrur' {{ç+a}t
+S#i\r*§E* 'ucplne '?-X pê§-Fx:an) Aq pInOqS SalduUxa BururUr] IOpOtrI-pIJOÂÀ
+xagrJaÂ pue rauueld
+oq) qrm patelarrof, Isoru lnq'adÁIolo.rd $adsãqf, :Árg;qudee atrIT paruqs.
+
+===== PAGE 14 (IMG_20261024_0014.pdf) =====
+ffi 'sraldupe pâEraur Á1pu{q
+uurll JaqlEJ palnoJ salerrllCIlu pue rrlawr{}I.ru VUo"I }rãJrp JoJ sruâIqo.rd rugurrs
+sl.roda.r:IToW E,I 'af,uêJaJJalq 1rrguof,-u81s pue alepdn-tuepunpoJ sluêumlop
+EuIEraW-SgII :lInEJãp Átt ages Ágerprqatp ]ou $ uCIIleulquror reldupe Íanamog gt
+'â)uewJoJrad 4su1 anrilladuor Eup.rasard ayq*r slapou pâl€n1erra sll u1 s.ralarue.:ed
+êIqBmeJl Eumnpe"r'salepdn {ueJ-/vrol suJBaI pue slq8rar\À ãseq sâzôâr; 1rEüT
+'pa{u{ are luiod{Jâq} pue lsetrp }asu}Ep 'uolspra.r ffis r
+ipalsal sr {3urgor r
+Ilgauaq Árrpnb/uarlo{Árua}El alquJnssaru sapraord lradxa aq1 .
+:uor)Bl1t]slp aÀr Jns s]ureJ]srrol s.l[!{s o{} r
+Ísrra [o"rdlsuCIrssas uaasun uo sploq alueru.ro;rad .
+Ísragr."raa luapuadapu ssoJle aaJ8u sIaqEI.
+Ípaurular a"re suorlJaJ;os pur ssJIr1lBJ r
+lalqugr.ran ;tlaaprafqo s! ssârrns r
+gr Á1uo âJnleur il roiÂeqâq V
+§aluf uo$üluCIJd
+'sarrdxa alueusÂord uaqm â{CInâJ Jo urEJ}aJ íalq€sl( '0I
+:rorrrrrr, 11pIs ]ua;rnr ]sule8e uCIrssâJ§ar r1po1.rad'6
+'{lEqilEJ tl}yvr uol}rnpord pate3 'g
+'uopnraxe qrgdxa rupte uosr.rudruoJ /vloputtrS'Á
+'tslppads ilElus ro raldupu palelofi olü uopemlsTp auil#ü'g
+'slgds p.rodura{uorssasêiâ [o.rd ssome s1sÁ1euu uraued alqe]§' §
+'saserl aapu8au pue aÂrilsod pagrran'p
+'JO/r^SUe '1OO1 'UOpnraXe 'UO1]f,sIAS 'IE^ArJlAr :UOluSOdUrOlAp AUrOS]nO 'â
+'s;loord lxaluos pue alnoJ q}rfir suorlnJêxg 'Z
+'uorslÂal pil"rrãHs IelIuouES'I
+JappEI uonBurl§rG
+uoIlBIIIl§Ip puB slapolu lBJnpasoJd/l.radx3 'g
+
+===== PAGE 15 (IMG_20261024_0015.pdf) =====
+L Auditahility and reversihility
+Achievable mechanism Limit
+Disahle adapter/expert;
+fall hack to skill
+Layer
+Behavioral reversibility
+Provenance reversibility
+Data attrihution
+Itnowledge
+interpretabil§
+Does not explain
+encoded knowledge
+Dataset digests, trace
+IDs, skill revision, code/
+containerlcheckpoint
+hashes
+Influence estimates,
+leave-cluster-out tests,
+Tracln-style analysis
+Probes, activation
+analysis, mechanistic
+studies
+Regression suites,
+shadow deployment,
+canaries, observed
+outcomes
+Does not isolâte each
+parameter's meaning
+Approximate;
+expensive; method-
+dependent
+Not comprehensive or
+solved
+Detects behavio4 not
+internal semantics
+External assurance
+Tracln estimates training-example influence using gradients and saved checkpoints,
+hut influence estimates should be treated as supporting evidence rather than exact
+provenance. 1§ Mechanistic interpretabil§ still has unresolved conceptual,
+practical and socio-technical problems; weight-level understanding is not a release
+gate that current methods can guarantee" s
+Each expert should ship with a provenânce certiÊcate: base model, adapter hash,
+canonical skill revision, trace dataset digest, exclusions, verification policy,
+evaluation splits, regression results, known failures, allowed activation contexts
+and rollback target.
+
+===== PAGE 16 (IMG_20261024_0016.pdf) =====
+10. Four cüncrete architectures
+tages Main failures
+§eparate
+services
+§hared base +
+dynamic LoRA
+Cognitive sparse
+MoE
+Strong isolation;
+independent
+models and
+scaling
+BaselKV reuse;
+smali specialist
+artifacts
+§parse
+parameter
+activation and
+joint training
+Explicit skills +
+typed state +
+separate world
+model +
+reasoningl
+procedural
+adapters
+§erialization
+latency;
+duplicated
+weights/KV;
+interface drift
+Adapter
+incompatihilityl
+interference;
+rCIuting security
+Router collapse,
+load imbalance,
+experts resident
+in memory
+More contracts
+and
+orchestration
+Hardware/audit
+profile
+Highest
+auditability;
+pCItentiâlly
+highest VRAM
+Strong rollback
+by unloading
+adapter
+Best nearterm
+balance
+Hyhrid
+recommended
+Switch Transformer demonstrates sparse per-input parameter activation but also
+identifies communication cost, complexity and training instabüty. 33- Its token-level
+routing does not itself solve state-aware cognitive routin8.
+High complexi§;
+weak expert-
+level auditability
+
+===== PAGE 17 (IMG_20261024_0017.pdf) =====
+latrBl {lsqllor PuB
+slxaluof, uoIlEÀIIJE pslvro11e'sarngeg uÁÀou{'s11nsor uoyssa"rtar's1qds uogenleÂo
+'Árr1od uopelglJaa'suolsnlrxa '1saãr-p laselep úJEJ]'uo1s1nar 11t{s 1elruoues
+'qseq.raldepe1aporu osBC[:a]urgluss a]uuuano.rd E q]Irvr dlqs ppoqs uadxa LIsEIÍ
+BT 'aolue"ren8 uEJ spot;tatu }uaJJnr 1uql a1e8
+asuêIar E lou sr SugpuelsJopun loÂol-li{ftarvr Ísuralqord prluqlô}-oltos pue prrpurd
+'pnldaruol põÂIosoJun suq 11I]s Álqrquprúatul f,r]sruetlf,al^l sf 'arueuaÂord
+llexs ueql Jar{}eJ af,uapmo Suluoddns sE pa}EaJ} aq ppoqs sa}Erul}sü aluênl;ul }nq
+'s1u1od4ror{t pêÀes pue s}uarpurB Bulsn sf,uonllur aldu:exa-ãupleJ} sa}Erur}ss UIIEJI
+§f,rluuruas IEuJalur
+lou Íor.rruqôq s]ra]êü
+paÂIos
+Jo ãÂIsuaqa.rdurar 1o6i
+luapuadep
+-pCIqlatu Íenrsuadxa
+Íaleunxorddy
+Surueaur s,.ralaruurud
+qsEa alBloq lOu sã0ü
+aãpa1anou4 pãpoluâ
+urqdxa ;ou sroü
+saluof,]no
+paÂJa§qo 'salruuel
+'1uau.,{o1dap ÀÀopEqs
+'se11ns uorssartag
+§ãrpnls
+JIlsIuBqJaur'srsÁ1uue
+uoIlEAI]3E 'SaqOr6
+srsÁ1eue a1r{1s-u1rer;
+'slsa] ]no-Jalsnls-ô/reaI
+'salurupsa ãf,uõnlJiuJ
+§âqsuq
+1u1od4raq:/-raupluor
+/apor 'uCIrsvral IIHs 's61I
+af,EJl's1sa51p ]ssslu(I
+af,ueJnssE IBuJalxS
+uoTlnqlr]}E uleo
+Á4çq1s.ra/rêJ alueuaÂoJd
+dr11.rqerardra]ur
+aBpapuouy
+flní§ ol wEq IIEJ
+Ípadxalraldepu êIqusr( ,firyqrs;aÂal IEJorÀEqafl
+I!luIT ru§IuBq)alu aIqB.{râF{)v "rai{u1
+ÁlmqlsrâÂâr puu thruqellpny'6
+
+===== PAGE 18 (IMG_20261024_0018.pdf) =====
+Ray Serve can represent separate modules as independently configured
+deployments. ?& For parameter-level experiments, PãFT supports in-place LoRÁ.
+swapping with compatibility constraints. á9 vLLM supports per-request LoRA and
+d.ynamic loading, but warns that runtime adapter updates creâte secur§ risks
+outside trusted environments. â§
+LL. Local-hardware policy
+Optimize quality per retained token, active parameter and. millisecond, not
+maximum model size.
+Recommended order:
+1". retrieve before generating;
+2. compüe typed stâte into bounded context;
+3. keep one quantized base resident;
+4. cache a small adapter working s€t in CPU RAM;
+5. load reasoning/procedural adapters on demand;
+6. run a small separate world model only when transition reasoning is triggered;
+7. reuse KV cache only when tokenizer, model weights, prefix and adapter
+semantics make reuse vaiid;
+8. measure adapter-switch, prefill, deeode, peak VRAM and energy separately.
+The existing research baseline already argues for quality per retained token and
+notes that selective retrieval reduces both prompt processing and KV-cache
+pressure. êl
+L2. Cancrete technology stack
+Layer Preferred candidates Alternatives
+Git Markdown/YAML +
+ISON SchemalPydantÍc
+Skills and schemas Protobuf, Avro
+
+===== PAGE 19 (IMG_20261024_0019.pdf) =====
+Preferred candidates Alternatives
+document storeryp SQLite/PostgreSQL
+ISONB
+Provenance graph NetworkX initially
+Retrieval Existing BM25
+Adapter training PyTorch + PEFT/TRL
+§erving llama.cpp for compact
+local runs; vLLM for
+multi-LoRA
+Seruice composition FastAPI first
+safetensors + content-
+addressed registry
+testa
+Neo4j when traversal
+justifles it
+Qdrant hybrid
+dense+sparse; reranker
+Axolotl, LLaMA-Factory
+SGLang, TGI
+Ray Serve when
+independent scaling
+matters
+ExperimentsÂineage MLflow + GitlDVC Weights & Biases
+Evaluation pytest + lm-evaluation-
+harness + custom agent
+harness
+Artifacts OCI artifacts
+Qdrant supports dense and sparse vectors with rank fusion, fitting the existing
+Iexical-plu§-semântic design without removing 8M25. ãâ MLflow records dataset
+source, digest, schema and experiment linkage, useful for provenance certificates.
+L"J
+AIInspect
+tayer
+
+===== PAGE 20 (IMG_20261024_0020.pdf) =====
+Ray Serve can represent separate modules as independently configured
+deployments. "ls For parameter-level experiments, PEFT supports in-place LoRA
+swapping with compatibility constraints. âf. vLLM supports per-request LoRA and
+dynamic loading, but warns that runtime adapter updates create security risks
+outside trusted environments. ãs
+1"L. Local-hardware pnlicy
+Optimize quali,ty per retained taken, active parameter and millisecond, not
+maximum model size.
+Recommended order:
+1. retrieve before generating;
+2. compile typed state into bounded context;
+3. keep one quantized hase resident;
+4. cache a small adapter working set in CPU RAM;
+5. load reasoning/procedural adapters on demand;
+6. run a small separâte world model only when transition reâsoning is triggered;
+7. reuse KV cache only when tokenize4 model weights, prefix and adapter
+semantics make reuse valid;
+8. measure adapter-switch, preflll, decode, peak VRAM and energy separately.
+The existing research baseline already argues for quality per retained token and
+notes that selective retrieval reduces both prompt processing and KV-cache
+pressure. â1
+12. Concrete technology stack
+Preferred canf,idates
+Git Markdown/YAML +
+JSON SchemalPydantic ,1
+Skills and schemas Protobuf, Avro
+Layer
+
+===== PAGE 21 (IMG_20261024_0021.pdf) =====
+L3. Training and henchmark progrâm
+Datasets
+Maintain separate corporâ for procedural execution, reasoning trajectories, state
+transitions, negative traces, routing decisions and flnal outcomes. Historical action
+is not correctness. Admit a trace only after verifi.er agreement and source-policy
+checks. Use session-, prcject- and time-grouped splits to prevent near-duplicate
+leakage.
+Experimental matrix
+Ablaüons
+Representation text-only i typed state I latent /
+t1ryed+latent
+Composition monolith / services / LoRA / MoE I
+hybrid
+Axis
+world on/ofi reasoning onloff; expert
+on/off
+Authority fallback on/off
+explicit skill / distilled expert /
+expert+skill veriflcation
+Routing flxed i rule graph / lexicai I iearned i
+learned+abstention
+Add metrics for module-selection accuracy, unnecessary activation, transition
+calihration, cnunterfactual ranking, canversion loss, provenance survival, fallhack
+recovery interference, unseen-session generalization, TTFI latency, tokens, peak
+VRÂM and ad.apter-switch cost. MemoryAgentBench's four-way separation
+reinforces the need to avaid one aggregate "memory score." s- í
+apabilityC
+tearning
+$
+I
+
+===== PAGE 22 (IMG_20261024_0022.pdf) =====
+14. Roadmap and stop gates
+1. Instrument current router: routeloutcome proofs, abstention labels, protected
+flelds.
+§top: outcomes cannot be classifled reliably.
+2. Externalize typed §tate: compaction/rehydration and provenance-§urvival
+tests.
+§top: repeated conversion loses constraints or rejected paths.
+3. Add system-level specialists: separate verifi"er and small procedural modules.
+§top: orchestration overhead exceeds gains"
+4. Adapter experiments: one isolated adapter at a time; no merging.
+§top: regression or switching cost exceeds explicit skills.
+5. World-transition learning: narrow domain, shadow prediction only.
+§top: poor calibration or systematic residuals.
+6. Reasoning specialization: train searchldebug/verification policies.
+§top: no gain over prompt/skill modules under matched compute.
+7. Procedural üistillation: verified high-volume skills only
+Falsifiable hypotheses
+. Hl: Sparse freeform composition improves matched-budget task success over a
+fixed three-stage pipeline.
+Falsifier: no signiflcant gain or higher failure ampliflcation.
+. H2: Typed state improves long-session robustness and transition prediction.
+Falsifier: text-only matches it while conversion errors increase.
+. H3: Distilled experts reduce context and latency without lowering verified
+correctness.
+Falsifler: regression rate or fallback frequency erases the savings.
+. H4: Explicit fallback catches expert regressions.
+Falsifier: routing fails to detect degraded expert behavior.
+. H5: Parameter-level composition beats small separate models under
+constrained VRAM.
+Falsifier: switchinglinterference costs exceed weight reuse.
+. H6: A world model helps only transition-dependent tasks.
+Falsiüer: universal activation performs better und"er matched compute.
+
+===== PAGE 23 (IMG_20261024_0023.pdf) =====
+1.3. Training and henchmark program
+Datasets
+Maintain separate corporâ for procedural execution, reasoning traiectories, state
+transitions, negative traces, routing decisions and final outcomes. Historical action
+is not correctness. Admit a trace only after verifier âgreement and source-policy
+checks. Use session-, project- and time-grouped splits to prevent near-duplicate
+leakage.
+Experimental matrix
+Axis
+Representation
+Composition
+Ahlations
+text-only I t)ryed state / Iatent I
+typed+latent
+services / LoRA i MoE I
+failback onioff
+explicit skill l distilled expert /
+expert+skill veriflcation
+flxed / rule graph / lexical / learned I
+learned+ahstention
+Capability
+Author§
+Learning
+tinguRo
+Add metrics for module-selection accurâcy, unnecessary activation, transition
+calihration, counterfactual ranking, conversion loss, provenance survival, fallback
+recovery interference, unseen-sessian generalization, TTFI latency, tokens, peak
+VRÂM and adapter-switch cost. MemoryAgentBench's four-way separation
+reinforces the need to avoid one aggregate "memory score." 
+§-
+on/off
+4
+r
+
+===== PAGE 24 (IMG_20261024_0024.pdf) =====
+' ::!
+Confidence: p = 0.84 for the hybrid architecture ând staged roadmap; materially
+lower for latent world-model reliability and cognitive MoE benefits hefore domain-
+specific experiments.
+
+===== PAGE 25 (IMG_20261024_0025.pdf) =====
+' t,\
+8. State-aware learned routing: rules remain eligibility and ahstention baundary.
+g. Sparse cognitive composition: attempt only after simpler baselines win.
+15. Do not build yet
+. automatic online weight uPdates;
+. world-model predictions written as facts;
+. deletion of sxxll. *r# after distillation;
+.learned routing without no-match and fallhack
+. unrestricted runtime adapter donmloads;
+. automatic adapter merging;
+r persistcnce of raw reasoning histories as training truth;
+.latent-only state;
+. fuli cognitive MoE before system-level and LoRA haselines;
+. mechanistic-interpretability claims as proof of complete reversihility.
+Conclusion
+lSyN] The viable thesis is narrower-and. stronger-than "buüd a digital brain."
+Explicit proced.ural knowledge can bootstrap specialized neural behavior, while
+typed state and evidence remain the governance layer. Reasoning modules decide
+how to investigate; world models predict possible transitions; procedural experts
+act. None is universally required, and none is inherently authoritative.
+The strongest current design is therefore:
+explicit authority + typed state + sparse capability routing + verified ohservation + reversible
+sPecialization
+What assumption could Ílip this? If disciplined explicit skills plus typed-§tate
+compiiation already saturate correctness and local-resource efficiency, neural
+specialization becomes unnecessary complexity. Conversely, if repeated verified
+workflows dominate cost and adapters preserve behavior under unseen-session
+evaluation, explicit-to-implicit migration becomes the natural next layer.
+ii
+iI
+
+===== PAGE 26 (IMG_20261024_0026.pdf) =====
+CONCRETE I M PLEM ENTATION
+rery&mre&ffi
+Benchmark & Ablation PIan
+Skill routing, fast-reading retrieval, typed context compilation, govenned
+memory, and canstrained local inference.
+§Gê§gÜffi ffiffi T§L'TH
+The immediately preceding "Concrete lmplementation Roadmap + BenchmarUAblation Plan". No
+external benchmark results or performance measurements are introduced.
+Fr*p*red 22 üctsber 2*2§
+§tatus: proposmd arehitecture and experãmental plan
+
+===== PAGE 27 (IMG_20261024_0027.pdf) =====
+ROUTER EXPERIMEilTAL PLATFORM - IMPLEMENTÂTION ROADMÂP
+ffi er*.utive Implementation Sequence
+The lexical router remains the control baseline. Complexity is added only when a preceding layer
+produces reliable evidence. lnstrument first; then selective retrieval and typed compaction; then
+hybrid retrieval, graph expansion, outcome learning, and finallyJEPA experimentation.
+hybrid ret
+raph
+utcome
+Rejected sêquênca; graph + emh*dding§ + J§pA + memcry, then hope it works. fvêry branch must he testet
+agairsÊ a frczcn haselãne with explicit falsifiers and rsuteloutcome trâces.
+Froposed End-to-End Router / Context 1 Mernory Architecture
+í,:ívx:ertrâj Ír{iliIe{:i:ufê -- íi} rlersilied Éçfíct3i*iifê j!?tüli*{l
+Fiç*r* ã" Propos*d *nd-to-ênd têrgêt êrehite{tilíe. üpti*nêl branches stay subordinetê tü insilÍficiency cheeks, prcvenance, *nd
+ualidat*d write-back. rus mêa$ured peÉormence is impli*d.
+ffi- 1. Target Architecture
+The system parses the current query with compact active STATE. Lexical, optional semantic, and explicit
+graph retrieval generate candidates. Fusion and a sufficiency/abstention controller decide whether to
+select, expand, search, or abstain. Fast-reading expansion retrieves relevant sections and bounded
+dependencies. A typed context compiler creates a budgeted packet for the smallest adequate model. Outcome
+and routing proof close the loop; only validated state enters governed stores.
+JEPA is a bounded candidate-fusion correction, not the first or sole router.
+Exact identifiers, safeguards, provenance, catalog precedence, and no-match behavior remain explicit.
+Raw histories are not canonical memory; persistent state is typed, versioned, source-linked, and
+governed.
+All visual performance relationships are proposed or conceptual until measured.
+L[ííCAL &D!.]1fii.
+§Mls . àliêsês . erãrt llls
+úUER? * 
+'IÀtÊPÁR5É'I
+llcô1. côíi5tíair1t5
+aLtí/e t IÀIE
+selecl. . ãb$tair'
+RELÊVÁN'T J
+§UÊÊ,C,Êlrcí
+r:ONTROLLÉâ
+eypand. gÊarah
+(;Âat fl I Í1i..'lÉ:
+íu5r0li
+prli[y í]onrtaairiit
+&r1I tÀir..t i À!N r'
+FÀST REAiIiI]É
+sectiÊn9 -:n6!ierl arieqrôte prcf ile
+tocAL 1 F.tti')rE
+tlODEL STÁTE
+. P(ír,]rE85
+CÔIlI[..EI CÕF,lPILER
+rlhldía?§ &y.etsrüfrr*
+ítfotêduras , rêmdntia fô(Lí.
+pto!êtÀnae. N,taohê labÉi§'
+êl:i50drs
+í;0vÍ:tv'JÉD 5lúRÊ!
+2. Phase O - Freeze the Baselineffi
+úsÉlr
+QUÉllY
+sÊt'rÁNI,C lr{rfx
+ripti{rrâÍ dúngê rôrd,dâte§
+»rÍc(1M€ f
+B'iJÍiNG PRDDT
+Ír(te. rnnte»t, i«ec(tirn
+tôol " nn5{iÊr' cone(tiün
+VALI DÀTTü !{'RIÍ8. §ÁCK
+(§nânirãl euidence ú[ly
+nô tnw trãn9rrÍpt iccumulntiDa
+
+===== PAGE 28 (IMG_20261024_0028.pdf) =====
+ROUTER EXPERIMENTAL PLATFORM . IMPLEMENTATION ROADMAP
+Tag the control system as router-baseline-vL. Freeze catalog revision, ranking logic, context budget, and
+evaluation data, Do not alter the control condition after experiments begin.
+evals/
+- - baseline/
+|-- routing.jsonl
+l-- no_match.jsonl
+l-- composite.jsonl
+| - - multilingual. jsonl
+' -- long_session. jsonl
+- - results/
+- - benchmark.py
+Each route records: route ID, query hash, router/catalog revisions, candidates and score tYpes, selected
+skills, abstention, injected sections/tokens, and retrieval/context/total latency.
+ff3. Phase I - Outcome lnstrumentation
+Decompose the gap between route and answer. A correct route must not become negative training data because
+a downstream tool failed,
+retrieval -> selection -> context injection
+-> skill actually used? -> tool/action succeeded?
+-> task succeeded? -> usêr corrêctêd?
+Retrieval expected skill; selected skills; expected found; abstained
+Execution skill observed; tool attempted; tool success
+Answer task success; user correction; evaluator result
+Failure stage; reason
+source/proof references
+Failure stages: DISCOVERY, RETRIEVAL, RANKING, SELECTION, EXPANSION, COMPACTION, EXECUTION, TOOL'
+GENERATION, UNKNOWN,
+§
+* 4, Phase 2 - Fast-Reading Retrieval
+Change retrieval from "rank skill, inject body" to "rank headers, inspect topology, rank sections, expand
+only relevant sections." Mandatory prerequisites and safeguards may still be injected'
+query -> rank skitt headers -> inspêct section topology
+-> rank sections -> expand relevant sections + mandatory prerequisites
+lDs, headings, token counts
+constraints mandatory/protêcted sections
+revrsron reproducibili§ and invalidation
+E
+§ 5. Phase 3 - Typed Context Compiler
+Replace flat concatenation with a structured packet. Protection classes define deterministic retention;
+compaction is a policy over typed atoms, not generic summarization.
+Group
+skill
+summary
+sections
+Field
+Evidence
+stable identifier and source
+short routing description
+
+===== PAGE 29 (IMG_20261024_0029.pdf) =====
+ROUTER EXPERIMENTAL PLATFORM - IMPLEMENTÂTION ROADMAP
+Froposed Typed Context Compaction and Compilation
+Folicy ei:d v$liiiülirrrí iiflsiç* * ii*hi:'o'iâí i:§ hf i:túáti.]rctJ
+PNOTECTION CLA§§ côÍrtFtLEn collTExT PÀcl(ÉT
+Comprssslos chônges rêprêsêstatian, not authsrity: pÍôte<ted Íõct§
+fiç,,tre2^ propôsed Vúi?llP2lP3 pí*tê{tiôn cl*sses ffiap iíltü CüNTllúL, SOAL, §ÍÉ1I[a, frft*(fi]UR§, [1./lül:f,Jf,f, §nri POINTüÊ§. {1eh*vi*r
+r*r,,*in* tú h* m*asLlred.
+Validation gate: instruction survival, conflict retention, provenance coverage, and recoverability
+& e . Phases 4-6 - Hybrid, Graph, Sufficiency
+Phase 4 - Hybrid retrieval
+Generate BM25 and dense lists independently; combine with a simple reproducible fusion rule. Start with
+reciprocal-rank fusion to avoid a learned-fusion confounder.
+BM25 top 10 - -
+dense
+- -> rank fusion+
+top 10 --
+--> top 5
+Phase 5 - Explicit skill graph
+Start with explicit edges only: REQUIRES, USES, PRODUCES, RELATED_TO, CONFLICTS_WITH, SUPERSEDES. Graph
+traversal is bounded retrieval, never recursive context. loading.
+rs=3, token_budget=1200)
+Phase 6 - Sufficiency I Abstention
+Use SUFFICIENT, EXPAND, SEARCH, ABSTAIN rather than one confidence number. A high score with a missing
+prerequisite triggers EXPAND.
+PÍê§gruê vsrbatam CONIft{'L
+60ÀL
+Prêsãrue êr rêlélênaG
+§IATÉ
+PROCEOURE
+SqmmâÍirê + re.ovêry polntêr
+ÉvrDEilcÉ
+POIt.IÍERS
+f
+vÁLtüÀTtnu ÇArr
+inslrrclirr, ãuruiva1 . rDntlial retentirn
+prrlenãn(e retentisn . rearleÍâbliity
+Safe§; requiremênt; exact commandPO lmmutêble Preserve verbatim
+P1 Preserve/reference
+Summarize + pointer
+Errori citation; decision; provenance
+Background; completed branchP2 Compressible
+P3 Disposable Obsolete narration; chatter
+ExamplesActlonMeãnlngClass
+DlscardFf í]'sPc5Àsl!
+übriletã nôrrôtini . r:hÀlter
+FÕ IMI,II}IÀB:-E
+sníet, . lsrÍ Ít,lulremeÍt§ . exàct a4nr&Ànd§
+P:I LÔ53LES5 I REFERTI,iCEÜ
+Ftê{§, ailôtícn!. de{isirnr ' pievetana€
+r;i [tr[ilit1Ess,BLE
+àétktjÍ:úrd . {:süpleted hrÀr,. |â5
+Discard
+
+===== PAGE 30 (IMG_20261024_0030.pdf) =====
+'1. r.
+)t ROUTER EXPERIMENTAL PLATFORM - IMPLEMENTATION ROADMAP
+ál . Phases 7-8 - Outcome Learning and ,EPA
+Phase 7 - Outcome-based learning
+Training examples are state transitions: sTATE_t + QUERY_I + CANDTDATES_t -> SKILL-I+1. Weight them only
+with validated route, execution, and task outcomes. Transcript appearance is insufficient supervision.
+Phase I - ,EPA exPerimental branch
+Encode query, active goal, prior skill, unresolved state, and graph position. Predict a next-skill
+representation and contribute only a routing correction. JEPA has no authority over safeguards, exact
+identifiers, provenance, or abstention.
+S = atpha*BM25 + beta*dense + gamma*graph + delta*JE
+initialty: delta << alPha
+Proposed lmplementation Dependency Roadmap
+ln:;lri|rí]**i;ia»11 ê** Í?ilrcti*I:jbir Êvaisatio§ §í$ieii* le;lr:e* íl*#ta}rert::;
+liçrire 3. Ir*pos*rt dep+nd*rr*y road*:ap. lfislrur,lsrtixti*n anel ttprüd*rible h*nrh*arkinç prer*de ser*a*tit;, çraph, sul'í!ci*tlty,
+*utc**:e-!earning" *nd J IPÂ k]r"ânrht:§.
+ffi8. Benchmark Families BL-BL2
+FI]ÀSE Ú
+FreeÉe 8áseiln"
+FIRST Ti{ILESTOHE
+i frortt iairi('tl ha«'ii|14
+.j llaü|r lr!üt !r
+,1 {]iltalrÍÉ t{:hefí.]
+", 5ê(titn trpoicqy irde»
+.-' 5e,Êcli\2Êe)Fin9iq11
+- TipécSTÀ.Tt.o,iPiiel
+»o "j*rQv#,lgg"t§11']!lQÍ:r o» inrerrorl 4rapr
+B1 Exact routing
+82
+names, aliases, identifiers
+skill-set rêcall
+sêmantic recall beyond exact vocabulãry
+top-1 among near neighbors
+user wording vs metadata
+abstention; false activation
+Paraphrase
+Vocabulary mismatch
+No-match
+ConÍusable
+CompositeB6
+bounded prerequisite recovery
+rnglish; Portuguesê; mixed; code
+Dependency
+MultilingualB8
+Family
+,83
+B4
+B5
+P1lÁíI l
+1yÊsd C0nteÂI ClirÊiitr
+PHÂ58 2
+Fn5t-tlÉaÍii,tq Ílelr iê'rúi
+PHASÊ 1
+CrUtccíte lrtslrume,]túli0ll
+8EN[H1,1ÀR( liÀRNESS
+ver$iôired r1Êlaset5 + íretri(5
+P}JÀ9Ê
+t»pli(il 5kiJt
+r
+crãpk
+PHÀsÊ 4
+Hybrid llelriÉ.iõl
+FHÂ-CE 6
+SufÍiriency r' Abelei:Íirr
+FHÀ3E 7
+Clutrrmà-AesÊcj L\iàlnl,1â
+PlrÂ9r fl
+-lEFÂ ErFs:rimâ[tal Brü,]{ h
+Primâry targêtID
+
+===== PAGE 31 (IMG_20261024_0031.pdf) =====
+ROUTER EXPERIMENTAL PLATFORM - IMPLEMEÍ{TATIOI{ ROADMAP
+Long'session
+Contradiction811
+810
+Protected survival
+supersession with provenance
+repeated compaction behavior
+&ffi
+ffiffi
+84: deliberately unrelated prompts; always rêturning a skill is failure.
+87: prompt mentions A while A explicitly REQUIRES B.
+89: standalone "continue" should abstain; state-aware routing may select the next capability.
+8L0: preserve âccepted decision, rejected path, and later discovery.
+812: test after 1, 5, L0, and 20 compaction cycles; these are checkpoints, not results.
+9. Metrics and Resource Accounting
+Summary similarity is not the primary compaction metric. Measure behavioral survival: obedience,
+contradiction retention, evidence recovery, and avoidance of rejected paths,
+Conceptual Quality*Resourcê Pareto Frontier
+Ç*tls*pâtt*ã *&ly - n* h*nçhmerk r*s$lt $r sx$rsrsriÇ p*rf*rms$(e {$âi{}'r
+preferneei r*giax;
+á:ãglr*r qHêiity 6tr eq{á*rl ür f üau{}r ($§*
+o
+ut
+G
+$
+&
+ê#
+t
+IE
+ir
+{,
+$tJ,
+IE
+rl,
+&üu
+§t
+I*,ú
+M6âsulê configurôtiôn3 hêrê
+usdêr Ífiatch€d tasks ãnd hârdware
+t1§l*{tê* *bje{tivê.
+rli*isuü1 lf§r{M rêgãrírle§í *l rlueli,.y
+* * Target Pareto envelope (conceptual)
+Éêj*.têrl {rbie.tivê:
+nr&{i*}uffi quêttay regãrdlêua *, 165í
+Compoeitê resource cost; VRAM ' lâtency ' input tokenç - {to be measured)
+I-iütite 4. C*ilceptirnl tluality-resource Ferr*to lsrç*t. I'Jú p*ir:t* +r nurn*ric claims er* mençur*d; üoü.\tlal* only after ntàtrh*d
+/i.í1í dwa{*. a*4 lask *xperirnenls.
+Routing Recall@1/3; MRRI nDCG; Precision@1; no-match; false activation; task success
+Context
+Local infêrence
+Compaction
+inputlretrievedlinjected tokens; compression; irrelevant-context ratio
+TTFT; latency; tokens/sec; peak VRAM; KV cache; CPU RAM
+evidence; conflict; provênance; state recovery
+End-to-end task success under matched task, model, hardware, and budget
+Mêtrics 1 obseÍvationsI Dimension
+§ ro. Ablation Plan
+decisionlrejection/d iscovery su rvival
+:
+Bl"2
+**
+
+===== PAGE 32 (IMG_20261024_0032.pdf) =====
+CO
+cl"
+raw history
+sliding window
+c2 generic summary
+c3
+C6
+query-aware 5ummary
+typed STATE
+typed STATE + evidence pointers
+typed STATE + hierarchical memory
+Stratêgy
+ROUTÊR EXPERIMENTAL PIJÀTFORM - IMPLEMENTATION ROÂDMAP
+Compaction CO-C6
+Expected advantages for C5lC6 remain hypotheses. Compare matched token budgets and repeated-compaction
+depths.
+ffi
+W LL. JEPA Ablation and Generalization
+J0 prompt -> skill
+Jr. prompt + previous skill -> skill
+prompt + STATE -> skill
+prompt + STATE + graph position -> skill
+J3 + outcome weighting
+Evaluate random, session-grouped, project-grouped, and temporal splits. lf random-split gains disappear on
+sessionlproject splits, reject deployment as fingerprint learning,
+ffi fZ. Experimental Discipline
+§ fE. Dataset Split Strategy
+Every experiment is versioned and falslfiable. Record hypothesis, baseline, smallest change,
+dataset/router/model revisions, metrics, results, falsifier status, confounders, and decision.
+experiment:
+hypothesis:
+baseline:
+change:
+dataset*revis ion
+router_revision:
+model*revision:
+met rics:
+results:
+falsified:
+confounders:
+decis ion :
+Set false-activation, latency, resource, provênance, and instruction-preseruation limits before inspecting
+the test set.
+TRAIN: sessions A-M; projects A-F; time T0-T1
+V,ALIDATI0N: unseên sessions; partially unseên projects
+TE§T: unseen sessi-ons; unseen projects; future period; adversarial,/no-match
+Hardest test: new project + new session + known catalog. Random prompt splits alone can preserve
+fingerprints across train and test.
+)2
+J3
+'4
+lnput / targêt
+ID
+c4
+C5
+ID
+
+===== PAGE 33 (IMG_20261024_0033.pdf) =====
+ROUTER EXPERIMENTAL PLATFORM - IMPLEMGNTATION ROADMAP
+Proposed Benchmark and Àblation Matrix
+I .,'-,i:it|la' riü;lir,r ü:r:r - {r:,r ririiir i.r'irT-r,i (i! 'L-:t:i'rr:l "(': ff,{}:l'rÉ:C ?i . rll,
+RO
+RX
+R2
+R3
+R4
+R5
+R6
+R7
+A. Retrieval Components
+BM25 Dênsê
+B. Fast-Reading Variants
+FO Fdll ski,l body
+Graph JEPA
+Ç, Compaction Variants
+c0 Ra* history
+Slidins uirdow
+C? (ienetit summary
+c3 Quêry-âwãrc s{ô&ãaY
+c4 TYp.d sTATe
+c§ TYpêd STÂTE + êvid*$rà pointêr*
+c6 ÍlipGd STÂfÉ + hlêrãrchirâl ilêmôry
+r1 lrlêtãdata { frll body
+F?
+r3 Tapology a rÊlêvânt sêttions
+F4 Tspalsgy - sêçtlohs - dêpêndEn€iês
+xRO
+Fiqurr 5. Fr*p*led relrlevái, l*§t-re*diilç, *nri csffifilrti*n vi:lr!;lntç. [fi**íecl c*Íll cl* nút reí]ífsefil resL;itç.
+Retrieval RO-R7
+R2 X
+R3 X
+R4 X
+R5 x
+R6 X X
+R7 x x
+Fast-reading FO-F4
+FO
+F1
+r2
+F3 topology -> relevant sections
+F4 topology -> sections -> dependencies
+Hypothesis to test: F3 retains ordinary-task quality at lower context cost; F4 earns its cost mainly on
+Xx
+X
+x
+xx
+BM25 GraphDênsê
+metadata -> relevant sections
+full skill body
+metâdâta -> full body
+r,l ananr{ anrrr/ram nnc i}a }: clzc
+X
+.X
+X
+it=...:a=:a:.| 'j:A,t::::::::=ltl
+::.:aa:::::a- l::,:=
+-;-;;;*
+aaj.-a , a- .:
+,EPAID
+ID
+
+===== PAGE 34 (IMG_20261024_0034.pdf) =====
+ROUTER EXPERIMENTAL PLATFORM - IMPLEMENTATION ROADMAP
+* Section-levelretrieval.
+- Typed-compactionsurvival.
+- Hybrid retrieval contribution.
+* Dependency-graph contribution.
+- JEPA generalization.
+Assumption that could flip the roadmap
+lf section-level Fast Reading fails to reduce context materially without degrading task success, selective
+expansion is not superior to current bounded injection; hybrid retrieval becomes the next branch.
+S**re*-r*adm*p confid*nce mu * ü.$1. Thls is * p!*nning judçnrent, rrot a calihrat*d experimental probability.
+ffinpp"ndix B - First-Milestone Run Card
+[. []Freezebaseline
+Z" [ ] lmplement routeloutcome trace
+3, [ ] Build benchmark harness
+&" [ ] lmplement fast-reading section retrieval
+§, [ ] lmplement typed STATE compiler
+6. [ ] Run first three-way ablation
+First ablation: Baseline vs Fast Reading vs Fast Reading + Typed Compaction. Run across êxact, paraphrase
+no-match, confusable, composite, long-session, and protected-instruction families. Record task success,
+false activation, injected tokens, latency, and compaction survival. Do not add semantic, graph, oTJEPA
+branches until this gate is complete.
+
+===== PAGE 13 RE-OCR (image rotated 180, Gemma 8083 vision) =====
+• Shared LLM capability: cheapest prototype, but most correlated with the planner and verifier.
+
+World-model training examples should be {verified $Z_t$, action, observed $Z_{t+1}$}, including failed actions, no-ops, permission errors and delayed effects. Counterfactuals must be labeled simulated. Causal world models linked to language have shown promise for planning, particularly on longer horizons, but their environmental mapping remains learned and fallible. $^8$
+
+# 7. Reasoning-model design
+
+Reasoning specialists should operate over goals, hypotheses, evidence gaps and optional world-model rollouts—not over an undifferentiated transcript.
+
+Candidate specializations:
+
+• decomposition and planning;
+• retrieval/search policy;
+• debugging and falsification;
+• causal hypothesis testing;
+• verifier/test generation;
+• contradiction resolution;
+• compute allocation and stopping.
+
+ReAct supports interleaving reasoning, action and observation rather than separating planning from environment interaction. $^9$ Test-time compute methods include repeated sampling, correction and tree search, but increased compute is not automatically better. $^{10}$ Intrinsic self-correction can degrade reasoning when no external feedback is supplied, supporting independent tests, execution results and fresh evidence as verification signals. $^{11}$
+
+Reasoning experts therefore produce proposals and tests, not authority. A world model is optional: code inspection may require planning and tools but no transition prediction.
+
+===== PAGE 14 RE-OCR (image rotated 180, Gemma 8083 vision) =====
+8. Expert/procedural models and distillation
+
+Distillation ladder
+
+1. Canonical SKILL.md revision.
+2. Executions with route and context proofs.
+3. Outcome decomposition: retrieval, selection, execution, tool, answer.
+4. Verified positive and negative traces.
+5. Stable pattern analysis across project/session/temporal splits.
+6. Offline distillation into isolated adapter or small specialist.
+7. Shadow comparison against explicit execution.
+8. Gated production with fallback.
+9. Periodic regression against current skill revision.
+10. Disable, retrain or revoke when provenance expires.
+
+Promotion gates
+
+A behavior is mature only if:
+
+• success is objectively verifiable;
+• failures and corrections are retained;
+• labels agree across independent verifiers;
+• performance holds on unseen sessions/projects;
+• the skill's constraints survive distillation;
+• the expert provides measurable latency/token/quality benefit;
+• rollback is tested;
+• skill revision, dataset digest and checkpoint are linked.
+
+LoRA freezes base weights and learns low-rank updates, reducing trainable parameters in its evaluated models while preserving competitive task performance. $^{12}$ However, adapter combination is not algebraically safe by default: TIES-Merging documents redundant-update and sign-conflict interference. $^{13}$ MoLE reports similar problems for direct LoRA arithmetic and motivates routed rather than blindly merged adapters. $^{14}$
+
+===== PAGE 17 RE-OCR (image rotated 180, Gemma 8083 vision) =====
+9. Auditability and reversibility
+
+| Layer | Achievable mechanism | Limit |
+| :--- | :--- | :--- |
+| Behavioral reversibility | Disable adapter/expert; fall back to skill | Does not explain encoded knowledge |
+| Provenance reversibility | Dataset digests, trace IDs, skill revision, code/container/checkpoint hashes | Does not isolate each parameter's meaning |
+| Data attribution | Influence estimates, leave-cluster-out tests, TracIn-style analysis | Approximate; expensive; method-dependent |
+| Knowledge interpretability | Probes, activation analysis, mechanistic studies | Not comprehensive or solved |
+| External assurance | Regression suites, shadow deployment, canaries, observed outcomes | Detects behavior, not internal semantics |
+
+TracIn estimates training-example influence using gradients and saved checkpoints, but influence estimates should be treated as supporting evidence rather than exact provenance. $^{15}$ Mechanistic interpretability still has unresolved conceptual, practical and socio-technical problems, weight-level understanding is not a release gate that current methods can guarantee. $^{16}$
+
+Each expert should ship with a **provenance certificate**: base model, adapter hash, canonical skill revision, trace dataset digest, exclusions, verification policy, evaluation splits, regression results, known failures, allowed activation contexts and rollback target.

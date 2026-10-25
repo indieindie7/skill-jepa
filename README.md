@@ -181,5 +181,6 @@ Takeaways, matching the skill-jepa results above:
 - Stop the prior pull: train with the prompt dropped (prompt dropout) so the predictor learns when to defer to the previous skill.
 - Use the router as a re-ranker behind a trigger/BM25 router rather than as the primary router.
 - Abstention needs a signal from outside the prompt, such as the agent's own first tool call.
+- Longer road map (trace-rewarded GRPO policy, distillation to a tiny resident model, mixture of small models): `SELFIMPROVE_PLAN.md`.
 
 MIT licence.
