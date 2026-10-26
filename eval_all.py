@@ -1,6 +1,7 @@
 """eval_all.py: one-shot router eval. Production router (ops/treeroute_eval.py) + skilljepa splits (data/eval-*.json).
   py -3.13 -I skilljepa/eval_all.py [--rerun] [--no-tree] [--compare OLD.json] [--out PATH]
 Default reads the existing data/eval-<split>[-ctx[-labels]].json files (written by `skilljepa.py eval`).
+--lora DIR adds sft_policy_rerank + base_knn + recall8 (policy_eval.py, ~1 min, needs a free GPU) to the time-prevskill-all stem.
 --rerun re-runs skilljepa.py eval for session/prompt none+all and time prevskill+all (~70 s each, needs numpy + data/emb.npz).
 Writes data/eval-<YYYYMMDD>.json = {"tree": {router: {hit1,hit3,n}}, "jepa": {stem: {model: {hit1,hit3,abstain_acc,...}}}}."""
 import argparse, datetime, glob, json, os, re, subprocess, sys
@@ -8,7 +9,7 @@ import argparse, datetime, glob, json, os, re, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 TREE = os.path.join(HERE, "..", "ops", "treeroute_eval.py")
-MODELS = ["zero_shot_cosine", "skill_jepa", "gate_soft", "gate_soft_followup"]   # full set stays in the json
+MODELS = ["zero_shot_cosine", "skill_jepa", "gate_soft", "gate_soft_followup", "base_zero", "base_knn", "recall8", "sft_policy_rerank"]   # full set stays in the json
 NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -61,6 +62,18 @@ def jepa_load():
     return res
 
 
+QLORA_PY = "C:/llm/qlora/venv/Scripts/python.exe"
+
+
+def policy_rows(lora, base="knn"):
+    """Run policy_eval.py (time split, prevskill ctx) and return model rows for the time-prevskill-all stem."""
+    out = os.path.join(DATA, f"policy-{datetime.date.today():%Y%m%d}.json")
+    if run([QLORA_PY, os.path.join(HERE, "policy_eval.py"), "--lora", lora, "--base", base, "--out", out], 1800) is None: return {}
+    p = json.load(open(out, encoding="utf-8")); m = lambda d: {"hit1": d["hit1"], "hit3": d["hit3"], "abstain_acc": d["acc_with_abstain"],
+        "false_route": d["false_route_on_none"], "abstain_on_labelled": d["abstain_on_labelled"]}
+    return {"sft_policy_rerank": m(p["policy"]), f"base_{base}": m(p["base"]), "recall8": {"hit1": p["recall8"], "hit3": p["recall8"], "abstain_acc": None, "false_route": None, "abstain_on_labelled": None}}
+
+
 def rows(res):
     out = [(f"tree:{k}", v["hit1"], v["hit3"], None) for k, v in res.get("tree", {}).items()]
     for stem, d in res.get("jepa", {}).items():
@@ -87,10 +100,13 @@ def table(res, old=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--rerun", action="store_true"); ap.add_argument("--no-tree", action="store_true")
-    ap.add_argument("--compare"); ap.add_argument("--out")
+    ap.add_argument("--compare"); ap.add_argument("--out"); ap.add_argument("--lora", help="SFT LoRA dir: add the policy rerank tier to time-prevskill-all")
     a = ap.parse_args()
     if a.rerun: rerun_jepa()
     res = {"date": datetime.date.today().isoformat(), "tree": {} if a.no_tree else tree_eval(), "jepa": jepa_load()}
+    if a.lora:
+        pr = policy_rows(os.path.abspath(a.lora))
+        if pr: res["jepa"].setdefault("time-prevskill-all", {"models": {}})["models"].update(pr)
     path = a.out or os.path.join(DATA, f"eval-{datetime.date.today():%Y%m%d}.json")
     json.dump(res, open(path, "w", encoding="utf-8"), indent=1)
     old = None

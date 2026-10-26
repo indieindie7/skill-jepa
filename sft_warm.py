@@ -1,7 +1,7 @@
 """sft_warm.py: SFT warm start for es_train.py. LoRA r=16, loss = CE over the 9 answer-letter logits at the last position (only the answer token), bf16 autocast.
   C:/llm/qlora/venv/Scripts/python.exe sft_warm.py --exclude-eval [--smoke]   ->  data/sft-<date>-lora/  (feed to es_train.py --init-lora)"""
 import argparse, json, os, random, sys, time, datetime
-from es_data import load_data, LET, DATA, HERE
+from es_data import load_data, LET, DATA, HERE, letter_logits as letter_logits_shared
 sys.path.insert(0, os.path.join(HERE, "..", "llm"))
 ap = argparse.ArgumentParser()
 ap.add_argument("--model", default=r"C:\llm\models\qwen35-0.8b-abl"); ap.add_argument("--rows", default=os.path.join(DATA, "trace_pairs.jsonl"))
@@ -29,12 +29,8 @@ core = pm.base_model.model; W_let = core.get_output_embeddings().weight[[i[0] fo
 params = [p for p in pm.parameters() if p.requires_grad]; print(f"trainable {sum(p.numel() for p in params)} dtype {params[0].dtype}", flush=True)
 for r in tr + ev: r["ids"] = tok(r["text"], add_special_tokens=False).input_ids
 
-def letter_logits(rows):   # (n, 9) logits of the 9 letters at the last real token (right-padded + mask, as es_train.probs)
-    T = max(len(r["ids"]) for r in rows); pad = tok.pad_token_id or 0
-    ids = torch.tensor([r["ids"] + [pad] * (T - len(r["ids"])) for r in rows], device=dev)
-    am = torch.tensor([[1] * len(r["ids"]) + [0] * (T - len(r["ids"])) for r in rows], device=dev)
-    h = core.model(input_ids=ids, attention_mask=am).last_hidden_state
-    return h[torch.arange(len(rows), device=dev), am.sum(1) - 1].float() @ W_let.float().T
+def letter_logits(rows):   # (n, 9) logits at the last real token; shared code in es_data.letter_logits
+    return letter_logits_shared(core, W_let, [r["ids"] for r in rows], tok.pad_token_id or 0, dev)
 
 @torch.no_grad()
 def evaluate():

@@ -36,3 +36,12 @@ def load_data(rows_path, nomatch_path, exclude_eval, seed=0):
         r["y"] = 8 if r["label"] == "none" else c.index(r["label"])
         r["text"] = f"Previous skill: {r['prev']}\nQuery: {r['q'][:400]}\nCandidates: " + " ".join(f"{LET[i]}) {s}" for i, s in enumerate(c)) + " I) none\nAnswer:"
     return tr, ev
+
+def letter_logits(core, W_let, ids_rows, pad, dev):
+    """(n, 9) logits of the 9 letters at the last real token (right-padded + mask). core = causal LM with .model; W_let = lm_head rows of LET."""
+    import torch
+    T = max(len(i) for i in ids_rows)
+    ids = torch.tensor([i + [pad] * (T - len(i)) for i in ids_rows], device=dev)
+    am = torch.tensor([[1] * len(i) + [0] * (T - len(i)) for i in ids_rows], device=dev)
+    h = core.model(input_ids=ids, attention_mask=am).last_hidden_state
+    return h[torch.arange(len(ids_rows), device=dev), am.sum(1) - 1].float() @ W_let.float().T
