@@ -9,7 +9,7 @@ import argparse, datetime, glob, json, os, re, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 TREE = os.path.join(HERE, "..", "ops", "treeroute_eval.py")
-MODELS = ["zero_shot_cosine", "skill_jepa", "gate_soft", "gate_soft_followup", "base_zero", "base_knn", "recall8", "sft_policy_rerank"]   # full set stays in the json
+MODELS = ["zero_shot_cosine", "skill_jepa", "gate_soft", "gate_soft_followup", "base_zero", "base_knn", "recall8", "sft_policy_rerank", "sft_policy_rerank_bal", "sft_policy_rerank_bal_thr"]   # full set stays in the json
 NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -50,7 +50,7 @@ def jepa_load():
     res = {}
     for f in sorted(glob.glob(os.path.join(DATA, "eval-*.json"))):
         stem = os.path.basename(f)[5:-5]
-        if re.fullmatch(r"\d{8}", stem): continue          # earlier eval_all outputs
+        if re.fullmatch(r"\d{8}[a-z]?", stem): continue          # earlier eval_all outputs
         try: d = json.load(open(f, encoding="utf-8"))
         except (OSError, ValueError): continue
         row = {}
@@ -66,12 +66,16 @@ QLORA_PY = "C:/llm/qlora/venv/Scripts/python.exe"
 
 
 def policy_rows(lora, base="knn"):
-    """Run policy_eval.py (time split, prevskill ctx) and return model rows for the time-prevskill-all stem."""
-    out = os.path.join(DATA, f"policy-{datetime.date.today():%Y%m%d}.json")
-    if run([QLORA_PY, os.path.join(HERE, "policy_eval.py"), "--lora", lora, "--base", base, "--out", out], 1800) is None: return {}
+    """Run policy_eval.py (time split, prevskill ctx, --none-thr auto) and return model rows for the time-prevskill-all stem.
+    Names: sft_policy_rerank (+ _thr) for plain adapters, sft_policy_rerank_bal (+ _thr) when the adapter dir name has 'bal'."""
+    tag = os.path.basename(lora.rstrip("/\\")); out = os.path.join(DATA, f"policy-{datetime.date.today():%Y%m%d}-{tag}.json")   # never overwrites policy-<date>.json
+    if run([QLORA_PY, os.path.join(HERE, "policy_eval.py"), "--lora", lora, "--base", base, "--none-thr", "auto", "--out", out], 1800) is None: return {}
     p = json.load(open(out, encoding="utf-8")); m = lambda d: {"hit1": d["hit1"], "hit3": d["hit3"], "abstain_acc": d["acc_with_abstain"],
         "false_route": d["false_route_on_none"], "abstain_on_labelled": d["abstain_on_labelled"]}
-    return {"sft_policy_rerank": m(p["policy"]), f"base_{base}": m(p["base"]), "recall8": {"hit1": p["recall8"], "hit3": p["recall8"], "abstain_acc": None, "false_route": None, "abstain_on_labelled": None}}
+    nm = "sft_policy_rerank_bal" if "bal" in tag else "sft_policy_rerank"
+    rows_ = {nm: m(p["policy"]), f"base_{base}": m(p["base"]), "recall8": {"hit1": p["recall8"], "hit3": p["recall8"], "abstain_acc": None, "false_route": None, "abstain_on_labelled": None}}
+    if "policy_thr" in p: rows_[nm + "_thr"] = {**m(p["policy_thr"]), "thr": p["thr"]}
+    return rows_
 
 
 def rows(res):
