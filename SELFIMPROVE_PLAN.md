@@ -84,6 +84,8 @@ behind BM25, pass = Hit@1 > 0.62) is the first thing the data loop pays for.
 - Pass/fail: student within 2 points Hit@1 of the teacher on the time split; < 1 GB VRAM resident;
   route in < 50 ms on CPU or the shared GPU.
 
+- 10-26 reranker architecture candidate (from Windows support 3, video-notes tree/340, AVB "decision model", repo github.com/avbiswas/bev-train): Qwen-0.6B layers 1-20 + LoRA on the last 12 + 2-layer self-attn head + bilinear = one prob per choice, order-invariant (per-choice position reset + attention mask); 65.8% on his bench at ~450M params, ~$20 training. Fits us as the re-ranker over the BM25 top-N with route-log labels (sec 1) and Sage-A1.5 (localread --model sage, 8093, 9 GB) as the cheap judge/label source. Try after the SFT+ES loop settles; same eval_all.py bar.
+
 ## 5. Mixture-of-models runtime (LATER)
 - One loader (`Documents/Tools/llm/mix/mixd.py`, to write) that keeps several small models on one
   GPU: 8084 embedder (CPU today), the tiny router, and 1-3 other small specialists (e.g. a judge,
