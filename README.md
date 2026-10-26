@@ -184,3 +184,7 @@ Takeaways, matching the skill-jepa results above:
 - Longer road map (trace-rewarded GRPO policy, distillation to a tiny resident model, mixture of small models): `SELFIMPROVE_PLAN.md`.
 
 MIT licence.
+
+## Second eval set: Windows pytest failures -> fix class (2026-10-26)
+
+`data/ajax-win-failures.jsonl` (627 records, 32 classes) comes from helping the Odysseus project run its suite natively on Windows: three full pytest runs (606 -> 156 -> 83 failures) and 41 one-class-per-PR fixes. Each record is one failing test id with its first traceback line (`q`), the fixing PR's class as the label (`skills`, same keys as `pairs.jsonl`), the PR (number, branch, title), the root `file:line` of the fix and how the label was attributed (`test-file` = the PR edits that test file, `keyword`, `residue` = still failing after all PRs, `unresolved` = fixed by a prod PR we could not name). It is "failure text -> fix recipe" routing with ground truth that was verified by the next run; rebuilt by `ajax_export.py` from the run logs.

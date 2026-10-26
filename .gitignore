@@ -1,5 +1,6 @@
-data/
+data/*
 __pycache__/
 *.npz
 notes/local-jobs-1026/dig_*.md
 notes/local-jobs-1026/drill_*.md
+!data/ajax-win-failures.jsonl
