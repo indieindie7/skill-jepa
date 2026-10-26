@@ -1,0 +1,33 @@
+start 07:40
+drill_es rc=1 235s bytes=0 07:44
+drill_tfidf rc=1 195s bytes=0 07:47
+plan_review rc=0 152s bytes=2169 07:50
+nomatch_gen rc=0 182s bytes=9611 07:53
+trace_pairs_draft rc=0 97s bytes=5049 07:55
+gpu_py_draft rc=0 193s bytes=10938 07:58
+eval_all_draft rc=1 117s bytes=0 08:00
+dig_ws1_a rc=0 152s bytes=462 08:02
+dig_ws1_b rc=0 162s bytes=372 08:05
+dig_ws1_c rc=0 388s bytes=392 08:12
+dig_ws2_b rc=0 478s bytes=363 08:20
+stopped 4716
+stopped 5744
+stopped 8728
+stopped 12316
+end 08:20 server stopped
+start b 08:21
+warmup rc=0 42s bytes=216 08:21
+drill_es rc=0 52s bytes=1069 08:22
+drill_tfidf rc=0 70s bytes=1264 08:23
+dig_ws1_a rc=0 88s bytes=1580 08:25
+dig_ws1_b rc=0 207s bytes=1451 08:28
+dig_ws1_c rc=1 252s bytes=0 08:32
+dig_ws2_b rc=1 201s bytes=0 08:36
+dig_ws2_a rc=0 426s bytes=1570 08:43
+dig_ws2_c rc=0 867s bytes=1594 08:57
+eval_all_draft rc=0 103s bytes=13446 08:59
+stopped 10976
+stopped 1836
+stopped 3368
+stopped 1924
+end b 08:59 server stopped

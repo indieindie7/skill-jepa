@@ -78,13 +78,36 @@ behind BM25, pass = Hit@1 > 0.62) is the first thing the data loop pays for.
 ## 6. Environment prep checklist
 - [x] Training venv: `C:\llm\qlora\venv` has torch 2.14.1+cu130, trl 1.15.0, peft 0.21.2,
       transformers 5.17.0, unsloth 2026.10.6 (checked 10-25). py 3.13 has no torch; keep it so.
-- [ ] `skilljepa/trace_pairs.py` + nightly routine in opsd (after "route-trace").
-- [ ] No-match prompt set (experiment 3): `skilljepa/data/nomatch.jsonl`, 100 prompts.
-- [ ] GPU picker shared by all starters (localread.py already has `pick_gpu`; lift it into
+- [x] `skilljepa/trace_pairs.py` (10-26, Strata draft fixed by Sonnet: 62 lines; first run rows 1635, brief_only 632, full_read 530, miss 462, none 5, none+read 6, rewarded 1612 -> the 300-row pass is met, but rows are replayed route.log, see sec 8 leakage note). [ ] nightly routine in opsd (after "route-trace"); [ ] `--exclude-eval` flag.
+- [x] No-match prompt set (experiment 3): `skilljepa/data/nomatch.jsonl`, 97 prompts (23 pt-BR), written by Strata on the 4070 10-26 (`notes/local-jobs-1026/nomatch_gen.md`); label `none`, use as the abstain half of the eval.
+- [x] GPU picker shared by all starters (10-26: `Documents/Tools/llm/gpu.py`, 109 lines, free/pick/start/stop CLI + game check; start/stop not yet exercised; lifted from localread.py into
       `llm/gpu.py` so trainers and mixd use the same game check).
 - [ ] Models to download (uncensored first): a 0.5-1.5B instruct policy; a 300M-class student.
 - [ ] Eval harness: one script that prints Hit@1/Hit@3/abstain for BM25, BM25+prior, gate_soft,
       GRPO policy, student on the same rows (`ops/treeroute_eval.py` + `skilljepa.py eval`).
 
-## 7. From the Windows-support chats (localread dig, pending)
-(filled from wsN.answer.md when the Coder finishes; only cited lines that were checked)
+## 7. From the Windows-support chats (Strata digs, 10-26)
+Dug by Strata on the 4070 (`notes/local-jobs-1026/dig_ws1_*.md`, `dig_ws2_*.md`, `drill_es.md`, `drill_tfidf.md`). Line numbers = the chats' transcript extracts; ws1 7501-10000 and ws2 2501-5000 failed twice (timeouts), earlier partials held nothing new.
+
+### 7.1 ES / EGGROLL instead of GRPO (ws1 L31647-L31764)
+- User decision 10-15: "lets experiment es and eggroll". Plan then: decider-2b fine-tuned by Evolution Strategies (OpenES) or EGGROLL with low-rank, LoRA-shaped noise; scalar reward = rule label right/wrong; no backprop, no reference model, no KL.
+- Why it fits here: fits a 12 GB card (inference-only passes), works for non-differentiable fitness (route log reward, later game sim / TRM enemy brain). Papers: arXiv 1703.03864 (OpenES), 2509.24372, 2511.16652 (EGGROLL).
+- => sec 3 gets an ES/EGGROLL branch: try it first when only the 3060 is free; GRPO only if ES stalls below the BM25 baseline.
+
+### 7.2 Production rerank tier already in opsd (ws2 L1317-L1666)
+- Idea #10 fuzzy router (`ops/idea10_fuzzy_router.py`): truth pairs = route.log query -> usage.jsonl skill within 600 s; leave-one-out TF-IDF word + char-trigram centroids per skill; rerank only inside the text top-5; score floor 0.15 -> 0.25. Approved, measured gain 0.082; target `ops/opsd.py` (backups .bak-20261017l/m).
+- Rejected: idea #9 BM25 body layer (gain -0.056); idea #8 SmolLM fallback archived (model not on disk).
+- => any learned router must beat BM25 + this rerank tier, not plain BM25 (plan sec 0 numbers are plain BM25).
+
+### 7.3 Rules re-found
+- 8084 CPU embedder stays resident; swap to a lower-VRAM model at equal score; never persist route scores into index.json; Pareto = success + tokens.
+- Nothing in ws1-3 about a mixture runtime or a from-scratch tiny model: sec 5 stays Claude's own design. skill-jepa history there (1c8bab4..aa8ff56) matches sec 0.
+
+## 8. Review by the local model (Strata on the 4070, 10-26; raw: `notes/local-jobs-1026/plan_review.md`)
+Accepted fixes, in order of weight:
+- Leakage: before any training (sec 3), drop every sid that is in the `--sid-only` eval rows and every row after the time-split boundary from `trace_pairs.jsonl` (flag `--exclude-eval` in trace_pairs.py; eval sids read from `data/eval-session-*.json` / `eval-time-*.json`). The replayed route.log rows are overcounted; count a sid once.
+- Pass criteria get a generalization gap: student and policy must be within 2 points of the teacher on the UNSEEN split (0.50 today), not only on the mixed Hit@1.
+- Judge check: label 50 ambiguous trace rows by hand before the judge pass is trusted; judge precision/recall < 0.90 means train on unambiguous rows only.
+- Distillation path: teacher and student tokenizers differ (Qwen/Gemma policy vs EmbeddingGemma+MLP student), so token-level on-policy distillation is out; distil the label distribution over the 78 skills (soft targets + abstain logit), i.e. sequence/label KD only.
+- GPU rule stays "gpu 0 off while a game exe runs" (the review's "any GPU" reading is wrong); `llm/gpu.py` enforces it for trainers and mixd alike.
+Local-model job log (what the 4070 did, serial, Strata 8090): `notes/local-jobs-1026/log.txt`.
