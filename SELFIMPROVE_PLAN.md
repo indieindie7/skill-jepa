@@ -69,6 +69,8 @@ behind BM25, pass = Hit@1 > 0.62) is the first thing the data loop pays for.
   production rerank tier (sec 7.2, BM25 + idea #10 TF-IDF rerank) on the same rows via
   `eval_all.py`. Go to GRPO (3) only if ES plateaus below the bar after 30 generations.
 
+- 10-26 smoke (Sonnet wrote `skilljepa/es_train.py`, 164 lines, qlora venv, reuses es_lab hooks): both algos run on the 3060. eggroll: base acc 0.203 -> 0.203 after 2 gens (best 0.219), 6.1 s/gen, 7.3 GB; openes: 0.203 -> 0.188, 4.0 GB. Chance = 1/9. Train rows 794 (81 none), eval = md5(query)%5==0 + session fold 0 sids (eval-*.json hold no sids). `--seqs 128` (256 = 13 GB, 60 s/gen). LoRA hits only the 6 full-attention layers (12 modules, 640k params); `--targets` can add linear-attention projections. Qwen3.5 runs the slow torch path (no flash-linear-attention / causal_conv1d). Full run estimate pop 32 batch 128 ~1.5-2 min/gen (guess). NEXT: 30-gen eggroll run on the free GPU, then eval_all.py row.
+
 ## 4. Distil to the tiny model (LATER)
 - Target: a model small enough to stay resident beside other small LLMs: <= 300M params
   (EmbeddingGemma size) or the predictor MLP itself (today ~MB, numpy) with the GRPO policy as
@@ -97,7 +99,7 @@ behind BM25, pass = Hit@1 > 0.62) is the first thing the data loop pays for.
 - [x] No-match prompt set (experiment 3): `skilljepa/data/nomatch.jsonl`, 97 prompts (23 pt-BR), written by Strata on the 4070 10-26 (`notes/local-jobs-1026/nomatch_gen.md`); label `none`, use as the abstain half of the eval.
 - [x] GPU picker shared by all starters (10-26: `Documents/Tools/llm/gpu.py`, 109 lines, free/pick/start/stop CLI + game check; start/stop exercised 10-26 (picked gpu 1, health ok, stop clean); game check only matches paths with steamapps/games (gpu.py:30); lifted from localread.py into
       `llm/gpu.py` so trainers and mixd use the same game check).
-- [ ] Models to download (uncensored first): a 0.5-1.5B instruct policy; a 300M-class student.
+- [x] Policy model (10-26): huihui-ai/Huihui-Qwen3.5-0.8B-abliterated, 1.77 GB safetensors at `C:\llm\models\qwen35-0.8b-abl` (SOURCE.txt). [ ] 300M-class student still to pick.
 - [x] Eval harness (10-26, Sonnet from the Strata draft): `skilljepa/eval_all.py` (105 lines): parses `ops/treeroute_eval.py` rows + reads/`--rerun`s `skilljepa.py eval` splits, writes `data/eval-<date>.json`, `--compare PATH` diffs. First run 10-26: tree:base 0.581/0.817, tree:base+prev 0.586/0.828, prompt-prevskill-all gate_soft 0.647/0.809/abstain 0.820. ES/GRPO policy + student rows still to add once they exist.
 
 ## 7. From the Windows-support chats (Strata digs, 10-26)
