@@ -54,6 +54,21 @@ behind BM25, pass = Hit@1 > 0.62) is the first thing the data loop pays for.
 - Pass/fail: Hit@1 on the time split > gate_soft 0.58 and > BM25+prior .646 on sid rows; abstain
   accuracy on the no-match set (experiment 3, 100 prompts) > 0.793.
 
+### 3b. ES / EGGROLL branch (FIRST, before GRPO; from sec 7.1, user decision 10-15)
+- Same policy model + prompt format as 3. Fitness = trace reward from step 1 (right skill +1,
+  wrong 0, "none" when the row is none +1), averaged over a batch of 256 rows per candidate.
+- OpenES (arXiv 1703.03864): population 32, antithetic pairs, sigma 0.02, Adam lr 0.01 on the
+  LoRA r=16 weights only (not full weights: 1.5B x 32 copies does not fit). EGGROLL
+  (2511.16652): perturbations are low-rank `x W^T + s * (x B_i) A_i`, so 32 candidates = 32
+  small (A,B) pairs resident at once, one forward each; no backward pass, no reference model.
+- Hardware: inference-only, bf16, fits the 3060 at 1.5B with batch 8 x 32 candidates ~ 20 min
+  per generation; 4070 Ti only when no game exe is in nvidia-smi (`llm/gpu.py pick`).
+- Script to write: `skilljepa/es_train.py --algo openes|eggroll --rows data/trace_pairs.jsonl
+  --exclude-eval` (sec 8 fix: eval sids out). Log fitness per generation to `data/es-<date>.jsonl`.
+- Pass/fail: same bar as 3 (gate_soft 0.58 / BM25+prior .646 / abstain .793) PLUS beat the
+  production rerank tier (sec 7.2, BM25 + idea #10 TF-IDF rerank) on the same rows via
+  `eval_all.py`. Go to GRPO (3) only if ES plateaus below the bar after 30 generations.
+
 ## 4. Distil to the tiny model (LATER)
 - Target: a model small enough to stay resident beside other small LLMs: <= 300M params
   (EmbeddingGemma size) or the predictor MLP itself (today ~MB, numpy) with the GRPO policy as
@@ -80,11 +95,10 @@ behind BM25, pass = Hit@1 > 0.62) is the first thing the data loop pays for.
       transformers 5.17.0, unsloth 2026.10.6 (checked 10-25). py 3.13 has no torch; keep it so.
 - [x] `skilljepa/trace_pairs.py` (10-26, Strata draft fixed by Sonnet: 62 lines; first run rows 1635, brief_only 632, full_read 530, miss 462, none 5, none+read 6, rewarded 1612 -> the 300-row pass is met, but rows are replayed route.log, see sec 8 leakage note). [ ] nightly routine in opsd (after "route-trace"); [ ] `--exclude-eval` flag.
 - [x] No-match prompt set (experiment 3): `skilljepa/data/nomatch.jsonl`, 97 prompts (23 pt-BR), written by Strata on the 4070 10-26 (`notes/local-jobs-1026/nomatch_gen.md`); label `none`, use as the abstain half of the eval.
-- [x] GPU picker shared by all starters (10-26: `Documents/Tools/llm/gpu.py`, 109 lines, free/pick/start/stop CLI + game check; start/stop not yet exercised; lifted from localread.py into
+- [x] GPU picker shared by all starters (10-26: `Documents/Tools/llm/gpu.py`, 109 lines, free/pick/start/stop CLI + game check; start/stop exercised 10-26 (picked gpu 1, health ok, stop clean); game check only matches paths with steamapps/games (gpu.py:30); lifted from localread.py into
       `llm/gpu.py` so trainers and mixd use the same game check).
 - [ ] Models to download (uncensored first): a 0.5-1.5B instruct policy; a 300M-class student.
-- [ ] Eval harness: one script that prints Hit@1/Hit@3/abstain for BM25, BM25+prior, gate_soft,
-      GRPO policy, student on the same rows (`ops/treeroute_eval.py` + `skilljepa.py eval`).
+- [x] Eval harness (10-26, Sonnet from the Strata draft): `skilljepa/eval_all.py` (105 lines): parses `ops/treeroute_eval.py` rows + reads/`--rerun`s `skilljepa.py eval` splits, writes `data/eval-<date>.json`, `--compare PATH` diffs. First run 10-26: tree:base 0.581/0.817, tree:base+prev 0.586/0.828, prompt-prevskill-all gate_soft 0.647/0.809/abstain 0.820. ES/GRPO policy + student rows still to add once they exist.
 
 ## 7. From the Windows-support chats (Strata digs, 10-26)
 Dug by Strata on the 4070 (`notes/local-jobs-1026/dig_ws1_*.md`, `dig_ws2_*.md`, `drill_es.md`, `drill_tfidf.md`). Line numbers = the chats' transcript extracts; ws1 7501-10000 and ws2 2501-5000 failed twice (timeouts), earlier partials held nothing new.
