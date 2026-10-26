@@ -1,20 +1,12 @@
-"""avb_rerank.py: AVB-style decision head over EXISTING embeddings (no LLM pass). Order-invariant self-attention across 8 knn candidates + 1 learned "none" token -> one logit each.
-  C:/llm/qlora/venv/Scripts/python.exe avb_rerank.py [--no-attn] [--seeds 3] [--out data/avb-<date>.json]   (CPU; --no-attn = per-choice MLP ablation, merged into the same json)
-Rows/splits/candidates exactly as policy_eval.build (time split: test = last 30% of each chat; VAL = train positions [0.49,0.70); TRAIN of the head = positions < 0.49 with leave-one-out knn).
-Token = [query(prevskill ctx), cand skill emb, query*cand, cos, knn energy, rank/8, cand==prev skill, cand in prev row's used set, is_none]; no positional encoding. Early stop on VAL CE."""
-import argparse, datetime, json, os, random, time
+"""avb_rerank.py v2: AVB-style decision head over EXISTING embeddings (no LLM pass). Order-invariant self-attention across K candidates + 1 learned "none" token -> one logit each.
+  C:/llm/qlora/venv/Scripts/python.exe avb_rerank.py [--topk 16] [--no-bm25-feats] [--v1] [--no-attn] [--no-refit] [--seeds 3] [--name avb2] --out data/avb-<date>-v2.json   (CPU; every run merges its keys into --out)
+Rows/splits as policy_eval.build (time split: test = last 30% of each chat; VAL = train positions [0.49,0.70); head TRAIN = positions < 0.49 with leave-one-out knn). v2 = candidates: knn+BM25 union filled to K (avb_feats.cands);
+feats + BM25 score/rank/top1/top3 + prev-skill prior; rows whose gold is outside the K candidates stay, labelled none; early stop on VAL CE + none-thr on VAL, then REFIT on the full train part (positions < 0.70, leave-one-out knn)
+for the chosen epoch count with the tuned thr. Keys per run: <name>_head(_thr) = val-fit head, <name>_refit(_thr) = refit head. --v1 = old behaviour (knn top-8, no lex feats, out-of-8 rows dropped, no refit) -> ~avb-20261026.json numbers.
+Token = [query(prevskill ctx), cand skill emb, query*cand, scalars of avb_feats.feats]; no positional encoding."""
+import argparse, json, os, random, time
 import numpy as np, torch, torch.nn as nn, torch.nn.functional as F
-import policy_eval as pe, skilljepa as sj
-DATA = pe.DATA; K = 8
-
-
-def feats(Xq, Y, E, cands, plab, allp_prev):
-    """-> (n, 9, 3d+6) float32; slot 8 = none token (cand emb 0, scalars = query summary + is_none)."""
-    n, d = Xq.shape; c = np.array(cands); e = np.take_along_axis(E, c, 1); cos = np.einsum("nd,nkd->nk", Xq, Y[c]); rank = e.argsort(1).argsort(1) / K
-    ip = (c == plab[:, None]).astype(np.float32); ia = np.array([[s in pp for s in row] for row, pp in zip(c, allp_prev)], np.float32)
-    T = np.zeros((n, 9, 3 * d + 6), np.float32); T[:, :8, :d] = Xq[:, None]; T[:, :8, d:2 * d] = Y[c]; T[:, :8, 2 * d:3 * d] = Xq[:, None] * Y[c]
-    T[:, :8, 3 * d:] = np.stack([cos, e, rank, ip, ia, np.zeros_like(cos)], 2); T[:, 8, :d] = Xq
-    T[:, 8, 3 * d:] = np.stack([cos.max(1), e.min(1), 0 * cos[:, 0], (plab < 0).astype(np.float32), 0 * cos[:, 0], np.ones(n)], 1); return T
+import policy_eval as pe, skilljepa as sj, avb_feats as af
 
 
 class Head(nn.Module):
@@ -24,63 +16,70 @@ class Head(nn.Module):
             nn.Sequential(*[nn.Sequential(nn.LayerNorm(d), nn.Linear(d, 512), nn.GELU(), nn.Dropout(p), nn.Linear(512, d)) for _ in range(2)])
         s.out = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, 128), nn.GELU(), nn.Linear(128, 1))
     def forward(s, T):
-        h = s.inp(T); h = s.enc(h) if s.attn else h + s.enc(h); return s.out(h).squeeze(-1)    # (n, 9)
+        h = s.inp(T); h = s.enc(h) if s.attn else h + s.enc(h); return s.out(h).squeeze(-1)    # (n, K+1)
 
 
-def target(lab, allp, cands):
-    """label skill if among the 8 candidates, else any used skill among them, else -1 (row dropped); none -> 8."""
-    t = np.full(len(lab), -1)
-    for i, (l, a, c) in enumerate(zip(lab, allp, cands)):
-        if l < 0: t[i] = 8
-        elif l in c: t[i] = c.index(l)
-        else:
-            h = [j for j, s in enumerate(c) if s in a]; t[i] = h[0] if h else -1
-    return t
+def epoch(m, opt, X, y):
+    m.train(); perm = torch.randperm(len(X))
+    for b in range(0, len(perm), 64):
+        i = perm[b:b + 64]; loss = F.cross_entropy(m(X[i]), y[i]); opt.zero_grad(); loss.backward(); opt.step()
 
 
-def run(seed, parts, attn, ep=60, pat=8):
-    torch.manual_seed(seed); np.random.seed(seed); tr, va = parts["train"], parts["val"]
-    m = Head(tr["T"].shape[2], attn=attn); opt = torch.optim.AdamW(m.parameters(), 1e-3, weight_decay=1e-2)
-    Xt, yt = torch.tensor(tr["T"]), torch.tensor(tr["y"]); Xv, yv = torch.tensor(va["T"]), torch.tensor(va["y"]); ok = yv >= 0; best = (9e9, None, 0)
+def run(seed, parts, attn, ep=60, pat=8, refit=True):
+    """val-fit head (early stop on VAL CE, thr on VAL) and, if refit, a fresh head trained on parts['refit'] for the chosen epoch count; both scored on test with the same thr."""
+    tr, va = parts["train"], parts["val"]; din = tr["T"].shape[2]; mk = lambda: Head(din, attn=attn)
+    torch.manual_seed(seed); np.random.seed(seed); m = mk(); opt = torch.optim.AdamW(m.parameters(), 1e-3, weight_decay=1e-2)
+    Xt, yt, Xv, yv = torch.tensor(tr["T"]), torch.tensor(tr["y"]), torch.tensor(va["T"]), torch.tensor(va["y"]); ok = yv >= 0; best = (9e9, None, 0)
     for e in range(ep):
-        m.train(); perm = torch.randperm(len(Xt))
-        for b in range(0, len(perm), 64):
-            i = perm[b:b + 64]; loss = F.cross_entropy(m(Xt[i]), yt[i]); opt.zero_grad(); loss.backward(); opt.step()
-        m.eval()
+        epoch(m, opt, Xt, yt); m.eval()
         with torch.no_grad(): vl = F.cross_entropy(m(Xv)[ok], yv[ok]).item()
         if vl < best[0]: best = (vl, {k: v.clone() for k, v in m.state_dict().items()}, e)
         elif e - best[2] >= pat: break
-    m.load_state_dict(best[1]); m.eval(); sc = lambda P: m(torch.tensor(P["T"])).detach().numpy()
-    Zv, Zt = sc(parts["val"]), sc(parts["test"]); thr = pe.tune_thr(Zv, parts["val"]); pa, _, _ = pe.metrics(Zt, parts["test"]); pt, _, _ = pe.metrics(Zt, parts["test"], thr)
-    return m, {"argmax": pa, "thr": pt, "thr_val": round(thr, 4), "epochs": best[2] + 1, "val_ce": round(best[0], 4)}
+    m.load_state_dict(best[1]); m.eval(); sc = lambda mm, P: mm(torch.tensor(P["T"])).detach().numpy()
+    thr = af.tune_thr(sc(m, va), va); r = {"thr_val": round(thr, 4), "epochs": best[2] + 1, "val_ce": round(best[0], 4)}; Zt = sc(m, parts["test"])
+    r["argmax"], r["thr"] = af.metrics(Zt, parts["test"]), af.metrics(Zt, parts["test"], thr); ms = [m]
+    if refit:
+        torch.manual_seed(seed); m2 = mk(); opt = torch.optim.AdamW(m2.parameters(), 1e-3, weight_decay=1e-2); rf = parts["refit"]; Xr, yr = torch.tensor(rf["T"]), torch.tensor(rf["y"])
+        for e in range(best[2] + 1): epoch(m2, opt, Xr, yr)
+        m2.eval(); Z2 = sc(m2, parts["test"]); r["refit_argmax"], r["refit_thr"] = af.metrics(Z2, parts["test"]), af.metrics(Z2, parts["test"], thr); ms.append(m2)
+    return ms, r
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--no-attn", action="store_true"); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--out"); a = ap.parse_args()
-    t0 = time.time(); S = pe.build(); X, Y, lab, allp, sid, names, plab = sj.data("prevskill", "all"); n = len(lab)
-    pos, cnt = np.zeros(n), {}
+    ap = argparse.ArgumentParser(); ap.add_argument("--no-attn", action="store_true"); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--topk", type=int, default=16)
+    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out", required=True); a = ap.parse_args()
+    if a.v1: a.topk, a.no_bm25_feats, a.no_refit = 8, True, True
+    K, union, lexf, drop = a.topk, not a.v1, not a.no_bm25_feats, a.v1; nm = a.name + ("_noattn" if a.no_attn else "")
+    t0 = time.time(); S = pe.build(); X, Y, lab, allp, sid, names, plab = sj.data("prevskill", "all"); n = len(lab); pairs = [json.loads(l) for l in open(os.path.join(pe.DATA, "pairs.jsonl"), encoding="utf-8")]
+    B, Pr = af.lex(pairs, names); pos, cnt = np.zeros(n), {}
     for i, c in enumerate(sid): pos[i] = cnt.get(c, 0); cnt[c] = pos[i] + 1
     tot = np.array([cnt[c] for c in sid]); te = pos >= 0.7 * tot; tr = ~te; sub = pos < pe.VAL_LO * tot
     allp_prev = [allp[i - 1] if i and sid[i - 1] == sid[i] else set() for i in range(n)]
-    def part(P, E):   # P = policy_eval part (idx, cands, lab, allp), E = knn energies of its rows
-        i = P["idx"]; return {"T": feats(X[i], Y, E, P["cands"], plab[i], [allp_prev[j] for j in i]), "y": target(P["lab"], P["allp"], P["cands"]), **{k: P[k] for k in ("lab", "cands", "allp")}}
-    # head TRAIN rows: sub part, leave-one-out knn within sub (self never a neighbour), candidates = top-8 shuffled
-    si = np.where(sub)[0]; Xs, ls = X[si], lab[si]; Sm = Xs @ Xs[ls >= 0].T; lt = ls[ls >= 0]; Sm[np.arange(len(si))[:, None] == np.where(ls >= 0)[0][None]] = -9
-    nn_ = np.argsort(-Sm, 1)[:, :10]; Etr = np.ones((len(si), len(Y)), np.float32)
-    for r in range(len(si)): np.add.at(Etr[r], lt[nn_[r]], -Sm[r, nn_[r]] / 10)
-    rng = random.Random(3); cs = [list(map(int, c)) for c in Etr.argsort(1)[:, :K]]; [rng.shuffle(c) for c in cs]
-    parts = {"train": part({"idx": si, "cands": cs, "lab": lab[si], "allp": [allp[i] for i in si]}, Etr),
-             "val": part(S["val"], sj.knn_energies(X[sub], lab[sub], X[S["val"]["idx"]], len(Y))), "test": part(S["test"], sj.knn_energies(X[tr], lab[tr], X[S["test"]["idx"]], len(Y)))}
-    parts["train"] = {**parts["train"], "T": parts["train"]["T"][parts["train"]["y"] >= 0], "y": parts["train"]["y"][parts["train"]["y"] >= 0]}
-    lt_ = S["test"]["lab"]; nm = "avb_noattn" if a.no_attn else "avb_head"; res, ms = [], []
-    for sd in range(a.seeds): m, r = run(sd, parts, not a.no_attn); res.append(r); ms.append(m); print(nm, sd, r, flush=True)
+    def part(i, E, shuf=None, fit=False):   # i = row indices, E = knn energies; fit = training part (v1 drops its y=-1 rows)
+        cs = af.cands(E, B[i], K, union)
+        if shuf: [shuf.shuffle(c) for c in cs]
+        y, out = af.target(lab[i], [allp[j] for j in i], cs, drop); T = af.feats(X[i], Y, E, B[i], Pr[i], cs, plab[i], [allp_prev[j] for j in i], lexf); k = (y >= 0) if fit else np.ones(len(y), bool)
+        rec = float(np.mean([bool(set(c) & allp[j]) for c, j in zip(cs, i) if lab[j] >= 0]))
+        return {"T": T[k], "y": y[k], "lab": lab[i], "cands": cs, "allp": [allp[j] for j in i], "out": out, "n": len(i), "recall": rec}
+    def loo(si, k=10):   # head TRAIN rows: leave-one-out knn within si (self never a neighbour)
+        Xs, ls = X[si], lab[si]; lt = ls[ls >= 0]; Sm = Xs @ Xs[ls >= 0].T; Sm[np.arange(len(si))[:, None] == np.where(ls >= 0)[0][None]] = -9
+        nn_ = np.argsort(-Sm, 1)[:, :k]; E = np.ones((len(si), len(Y)), np.float32)
+        for r in range(len(si)): np.add.at(E[r], lt[nn_[r]], -Sm[r, nn_[r]] / k)
+        return E
+    si, ti = np.where(sub)[0], np.where(tr)[0]; vi, ei = S["val"]["idx"], S["test"]["idx"]
+    parts = {"train": part(si, loo(si), random.Random(3), True), "val": part(vi, sj.knn_energies(X[sub], lab[sub], X[vi], len(Y))), "test": part(ei, sj.knn_energies(X[tr], lab[tr], X[ei], len(Y)))}
+    if not a.no_refit: parts["refit"] = part(ti, loo(ti), random.Random(4), True)
+    lt_ = S["test"]["lab"]; res, ms = [], []
+    for sd in range(a.seeds): m, r = run(sd, parts, not a.no_attn, refit=not a.no_refit); res.append(r); ms.append(m); print(nm, sd, r, flush=True)
     agg = lambda k: {q: [round(float(np.mean([r[k][q] for r in res])), 3), round(float(np.std([r[k][q] for r in res])), 3)] for q in res[0][k]}
-    out = json.load(open(a.out, encoding="utf-8")) if a.out and os.path.exists(a.out) else {}
-    out.update({"n": {"train_head": int(len(parts["train"]["y"])), "val": len(parts["val"]["y"]), "test": len(lt_), "test_labelled": int((lt_ >= 0).sum()), "test_none": int((lt_ < 0).sum())},
-                "base_knn": S["base"], "recall8": round(S["recall8"], 3), "always_abstain_acc": round(float((lt_ < 0).mean()), 3), "params": sum(p.numel() for p in ms[0].parameters()),
-                nm: agg("argmax"), nm + "_thr": agg("thr"), nm + "_runs": res, nm + "_secs": round(time.time() - t0, 1)})
-    if not a.no_attn: torch.save({"state": [m.state_dict() for m in ms], "din": parts["train"]["T"].shape[2]}, a.out.replace(".json", ".pt"))
-    json.dump(out, open(a.out, "w", encoding="utf-8"), indent=1); print(json.dumps({k: out[k] for k in (nm, nm + "_thr", "n", "params", nm + "_secs")}, indent=1))
+    out = json.load(open(a.out, encoding="utf-8")) if os.path.exists(a.out) else {}
+    info = {"K": K, "union": union, "bm25_feats": lexf, "refit": not a.no_refit, "recallK": {k: round(p["recall"], 3) for k, p in parts.items()}, "n_out_of_k": {k: p["out"] for k, p in parts.items()},
+            "rows": {k: p["n"] for k, p in parts.items()}, "params": sum(p.numel() for p in ms[0][0].parameters()), "secs": round(time.time() - t0, 1), "prior_rows_test": int((Pr[ei].sum(1) > 0).sum())}
+    out.update({"n": {"train_head": int(len(parts["train"]["y"])), "val": len(parts["val"]["y"]), "test": len(lt_), "test_labelled": int((lt_ >= 0).sum()), "test_none": int((lt_ < 0).sum()), "refit": len(parts["refit"]["y"]) if "refit" in parts else None},
+                "base_knn": S["base"], "recall8": round(S["recall8"], 3), "always_abstain_acc": round(float((lt_ < 0).mean()), 3), nm + "_head": agg("argmax"), nm + "_head_thr": agg("thr"), nm + "_runs": res, nm + "_info": info})
+    if not a.no_refit: out.update({nm + "_refit": agg("refit_argmax"), nm + "_refit_thr": agg("refit_thr")})
+    if a.name == "avb2" and not a.no_attn: out.update({"recallK": info["recallK"], "n_out_of_k": info["n_out_of_k"], "K": K}); torch.save({"state": [[m.state_dict() for m in s] for s in ms], "din": parts["train"]["T"].shape[2], "K": K}, a.out.replace(".json", ".pt"))
+    json.dump(out, open(a.out, "w", encoding="utf-8"), indent=1); print(json.dumps({k: out[k] for k in out if k.startswith(nm) and not k.endswith("_runs")} | {"n": out["n"]}, indent=1))
 
 
 if __name__ == "__main__":

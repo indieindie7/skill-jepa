@@ -9,7 +9,7 @@ import argparse, datetime, glob, json, os, re, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 TREE = os.path.join(HERE, "..", "ops", "treeroute_eval.py")
-MODELS = ["zero_shot_cosine", "skill_jepa", "gate_soft", "gate_soft_followup", "base_zero", "base_knn", "recall8", "sft_policy_rerank", "sft_policy_rerank_bal", "sft_policy_rerank_bal_thr", "avb_head", "avb_head_thr", "avb_noattn", "avb_noattn_thr"]   # full set stays in the json
+MODELS = ["zero_shot_cosine", "skill_jepa", "gate_soft", "gate_soft_followup", "base_zero", "base_knn", "recall8", "sft_policy_rerank", "sft_policy_rerank_bal", "sft_policy_rerank_bal_thr", "avb_head", "avb_head_thr", "avb_noattn", "avb_noattn_thr", "avb2_head", "avb2_head_thr", "avb2_refit_thr", "avb2_k8_thr", "avb2_nobm25_thr"]   # full set stays in the json
 NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -62,6 +62,7 @@ def jepa_load():
     return res
 
 
+V2 = {"avb2_head": "avb2_head", "avb2_head_thr": "avb2_head_thr", "avb2_refit_thr": "avb2_refit_thr", "avb2_k8_thr": "avb2_k8_head_thr", "avb2_nobm25_thr": "avb2_nobm25_head_thr"}
 QLORA_PY = "C:/llm/qlora/venv/Scripts/python.exe"
 
 
@@ -115,7 +116,8 @@ def main():
     if a.avb:
         d = json.load(open(a.avb, encoding="utf-8")); mm = lambda r, thr=False: {"hit1": r["hit1"][0], "hit3": r["hit3"][0], "abstain_acc": r["acc_with_abstain"][0], "false_route": r["false_route_on_none"][0],
             "abstain_on_labelled": r["abstain_on_labelled"][0], "std": {k: v[1] for k, v in r.items()}}
-        rw = {k: mm(d[k]) for k in ("avb_head", "avb_head_thr", "avb_noattn", "avb_noattn_thr") if k in d}
+        rw = {k: mm(d[k]) for k in ("avb_head", "avb_head_thr", "avb_noattn", "avb_noattn_thr") if k in d}   # v2 file (avb_rerank.py v2): row name -> json key
+        rw.update({r: mm(d[k]) for r, k in V2.items() if k in d})
         res["jepa"].setdefault("time-prevskill-all", {"models": {}})["models"].update(rw)
     path = a.out or os.path.join(DATA, f"eval-{datetime.date.today():%Y%m%d}.json")
     json.dump(res, open(path, "w", encoding="utf-8"), indent=1)
