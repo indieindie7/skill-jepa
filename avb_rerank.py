@@ -45,9 +45,21 @@ def run(seed, parts, attn, ep=60, pat=8, refit=True):
     return ms, r
 
 
+def load_extra(path, names, Y):
+    """--extra rows (trace_merge pairs_trace.jsonl + emb_trace.npz) -> arrays aligned like sj.data('prevskill','all'); prev = previous row of the same sid in the file."""
+    rows = [json.loads(l) for l in open(path, encoding="utf-8")]; X0 = np.load(os.path.join(os.path.dirname(path), "emb_trace.npz"))["X"]; assert len(X0) == len(rows), "rerun trace_merge"
+    ix = {n: i for i, n in enumerate(names)}; lab = np.array([ix.get(p["skills"][0], -1) for p in rows]); last, prv = {}, np.full(len(rows), -1)
+    for i, p in enumerate(rows): prv[i] = last.get(p["sid"], -1); last[p["sid"]] = i
+    plab = np.where(prv >= 0, lab[np.maximum(prv, 0)], -1); B, Pr = af.lex(rows, names)
+    return {"X": sj.with_ctx(X0, Y, prv, plab, "prevskill"), "lab": lab, "allp": [{l} if l >= 0 else set() for l in lab], "sid": np.array([p["sid"] for p in rows]), "plab": plab, "B": B, "Pr": Pr,
+            "allp_prev": [{lab[j]} if j >= 0 and lab[j] >= 0 else set() for j in prv]}
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--no-attn", action="store_true"); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--topk", type=int, default=16)
-    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out", required=True); a = ap.parse_args()
+    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out"); ap.add_argument("--extra"); ap.add_argument("--tag"); a = ap.parse_args()
+    if a.tag: a.out = a.out or os.path.join(pe.DATA, f"avb-{a.tag}.json")
+    assert a.out, "--out or --tag"
     if a.v1: a.topk, a.no_bm25_feats, a.no_refit = 8, True, True
     K, union, lexf, drop = a.topk, not a.v1, not a.no_bm25_feats, a.v1; nm = a.name + ("_noattn" if a.no_attn else "")
     t0 = time.time(); S = pe.build(); X, Y, lab, allp, sid, names, plab = sj.data("prevskill", "all"); n = len(lab); pairs = [json.loads(l) for l in open(os.path.join(pe.DATA, "pairs.jsonl"), encoding="utf-8")]
@@ -67,14 +79,20 @@ def main():
         for r in range(len(si)): np.add.at(E[r], lt[nn_[r]], -Sm[r, nn_[r]] / k)
         return E
     si, ti = np.where(sub)[0], np.where(tr)[0]; vi, ei = S["val"]["idx"], S["test"]["idx"]
-    parts = {"train": part(si, loo(si), random.Random(3), True), "val": part(vi, sj.knn_energies(X[sub], lab[sub], X[vi], len(Y))), "test": part(ei, sj.knn_energies(X[tr], lab[tr], X[ei], len(Y)))}
+    parts = {"val": part(vi, sj.knn_energies(X[sub], lab[sub], X[vi], len(Y))), "test": part(ei, sj.knn_energies(X[tr], lab[tr], X[ei], len(Y)))}
+    ex = load_extra(a.extra, names, Y) if a.extra and os.path.getsize(a.extra) else None   # extra rows join the head TRAIN/REFIT pools only (val/test knn pools unchanged)
+    if ex:
+        m_ = len(ex["lab"]); en = np.arange(n, n + m_); si, ti = np.r_[si, en], np.r_[ti, en]; X, lab, plab, B, Pr = np.vstack([X, ex["X"]]), np.r_[lab, ex["lab"]], np.r_[plab, ex["plab"]], np.vstack([B, ex["B"]]), np.vstack([Pr, ex["Pr"]])
+        allp, allp_prev = allp + ex["allp"], allp_prev + ex["allp_prev"]
+    parts["train"] = part(si, loo(si), random.Random(3), True)
     if not a.no_refit: parts["refit"] = part(ti, loo(ti), random.Random(4), True)
+    parts = {k: parts[k] for k in ("train", "val", "test", "refit") if k in parts}
     lt_ = S["test"]["lab"]; res, ms = [], []
     for sd in range(a.seeds): m, r = run(sd, parts, not a.no_attn, refit=not a.no_refit); res.append(r); ms.append(m); print(nm, sd, r, flush=True)
     agg = lambda k: {q: [round(float(np.mean([r[k][q] for r in res])), 3), round(float(np.std([r[k][q] for r in res])), 3)] for q in res[0][k]}
     out = json.load(open(a.out, encoding="utf-8")) if os.path.exists(a.out) else {}
     info = {"K": K, "union": union, "bm25_feats": lexf, "refit": not a.no_refit, "recallK": {k: round(p["recall"], 3) for k, p in parts.items()}, "n_out_of_k": {k: p["out"] for k, p in parts.items()},
-            "rows": {k: p["n"] for k, p in parts.items()}, "params": sum(p.numel() for p in ms[0][0].parameters()), "secs": round(time.time() - t0, 1), "prior_rows_test": int((Pr[ei].sum(1) > 0).sum())}
+            "rows": {k: p["n"] for k, p in parts.items()}, "params": sum(p.numel() for p in ms[0][0].parameters()), "secs": round(time.time() - t0, 1), "prior_rows_test": int((Pr[ei].sum(1) > 0).sum())} | ({"extra_rows": len(ex["lab"])} if ex else {})
     out.update({"n": {"train_head": int(len(parts["train"]["y"])), "val": len(parts["val"]["y"]), "test": len(lt_), "test_labelled": int((lt_ >= 0).sum()), "test_none": int((lt_ < 0).sum()), "refit": len(parts["refit"]["y"]) if "refit" in parts else None},
                 "base_knn": S["base"], "recall8": round(S["recall8"], 3), "always_abstain_acc": round(float((lt_ < 0).mean()), 3), nm + "_head": agg("argmax"), nm + "_head_thr": agg("thr"), nm + "_runs": res, nm + "_info": info})
     if not a.no_refit: out.update({nm + "_refit": agg("refit_argmax"), nm + "_refit_thr": agg("refit_thr")})
