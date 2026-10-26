@@ -5,7 +5,11 @@ One record per failing test id (union of the three runs), keys compatible with p
   skills        [class]   fine class = the fixing PR's branch name without fix/tests-/-windows
   test_id, file, runs_failed [3,4,5 subset], failure_line, family (coarse class from classes-run3.txt),
   pr {number, branch, title}, also (other PRs touching the test file), root "file:line" (first hunk of the PR diff,
-  src file preferred), attribution test-file | keyword | residue | unresolved.
+  src file preferred), attribution test-file | keyword | pinned | residue | unresolved.
+pinned = fixed between two runs by a src PR that does not touch the test file; found by merging each candidate PR alone
+onto 9d0d372 and re-running the test (scratchpad pin.py -> data/ajax-pins.json {test_id: {fixed_by: [prs], runs}}).
+env = class env-skip: the test only "passed" in later runs because it is skipped there (run 3 ran in the main clone with
+node_modules, runs 4/5 in bare worktrees where the Playwright guard skips it); pins entry {env: reason}.
 Still failing after run 5 (all 37 PRs merged): class node-env (Node/npm resolution in the test's traceback) or open-residue,
 unless one of the run-5 residue PRs (6892-6895) touches the test file.
 Sources: Documents/Ajax/pytest-win-1025c.log (run 3), pytest-win-run4.log, pytest-win-run5.log, classes-run3.txt,
@@ -17,6 +21,7 @@ import collections, json, os, re, sys
 AJAX = r"C:\Users\john\Documents\Ajax"
 PRD = sys.argv[1] if len(sys.argv) > 1 else r"C:\Users\john\AppData\Local\Temp\claude\C--\1220d323-40e2-4e57-a3a3-616ea80fffef\scratchpad\prdiffs"
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "ajax-win-failures.jsonl")
+PINS = os.path.join(os.path.dirname(OUT), "ajax-pins.json")
 RUNS = {3: "pytest-win-1025c.log", 4: "pytest-win-run4.log", 5: "pytest-win-run5.log"}
 # PRs merged into each combined run branch: run 3 = 6850-6855, run 4 = 30 PRs, run 5 = 37 PRs; after run 5: 6892-6895
 RUN_PRS = {3: set(range(6850, 6856)), 4: set(range(6850, 6880)), 5: set(range(6850, 6887)), 6: {6892, 6893, 6894, 6895}}
@@ -90,6 +95,7 @@ def prs():
 
 def main():
     fam, PR = families(), prs()
+    pins = json.load(open(PINS, encoding="utf-8")) if os.path.exists(PINS) else {}
     by_test_file = collections.defaultdict(list)
     for pr in PR.values():
         for f in pr["files"]:
@@ -113,7 +119,13 @@ def main():
         allowed = RUN_PRS[last + 1] - RUN_PRS[last] if last < 5 else RUN_PRS[6]
         cands = [n for n in by_test_file.get(f, []) if n in allowed] or ([] if last == 5 else by_test_file.get(f, []))
         how = "test-file" if cands else None
-        if not cands and last < 5:
+        if not cands and pins.get(nid, {}).get("fixed_by"):
+            cands, how = [n for n in pins[nid]["fixed_by"] if n in allowed], "pinned"
+        if not cands and pins.get(nid, {}).get("env"):
+            how = "env"
+        if not cands and pins.get(nid, {}).get("flaky"):
+            how = "flaky"
+        if not cands and how is None and last < 5:
             text = (f + " " + nid.split("::", 1)[1] + " " + msgs.get(nid, "")).lower()
             scored = sorted(((len([t for t in PR[n]["tokens"] if t in text]), n) for n in allowed if n in PR), reverse=True)
             if scored and (scored[0][0] >= 2 or (scored[0][0] == 1 and len(scored) == 1)):
@@ -121,6 +133,8 @@ def main():
         pr = PR[cands[0]] if cands else None
         if pr:
             cls = pr["class"]
+        elif how in ("env", "flaky"):
+            cls = "env-skip" if how == "env" else "flaky"
         elif last == 5:
             cls, how = ("node-env" if nid in node_ids else "open-residue"), "residue"
         else:

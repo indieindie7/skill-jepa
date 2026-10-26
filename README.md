@@ -187,4 +187,13 @@ MIT licence.
 
 ## Second eval set: Windows pytest failures -> fix class (2026-10-26)
 
-`data/ajax-win-failures.jsonl` (627 records, 32 classes) comes from helping the Odysseus project run its suite natively on Windows: three full pytest runs (606 -> 156 -> 83 failures) and 41 one-class-per-PR fixes. Each record is one failing test id with its first traceback line (`q`), the fixing PR's class as the label (`skills`, same keys as `pairs.jsonl`), the PR (number, branch, title), the root `file:line` of the fix and how the label was attributed (`test-file` = the PR edits that test file, `keyword`, `residue` = still failing after all PRs, `unresolved` = fixed by a prod PR we could not name). It is "failure text -> fix recipe" routing with ground truth that was verified by the next run; rebuilt by `ajax_export.py` from the run logs.
+`data/ajax-win-failures.jsonl` (627 records, 36 classes) comes from helping the Odysseus project run its suite natively on Windows: three full pytest runs (606 -> 156 -> 83 failures) and 41 one-class-per-PR fixes. Each record is one failing test id with its first traceback line (`q`), the fixing PR's class as the label (`skills`, same keys as `pairs.jsonl`), the PR (number, branch, title), the root `file:line` of the fix and how the label was attributed (`test-file` = the PR edits that test file, `keyword`, `residue` = still failing after all PRs, `pinned` = fixed by a src PR found by merging each candidate PR alone onto the base and re-running the test (`data/ajax-pins.json`), `env-skip` = only skipped in later runs, `flaky`). It is "failure text -> fix recipe" routing with ground truth that was verified by the next run; rebuilt by `ajax_export.py` from the run logs.
+
+Attribution: test-file 508, pinned 33 (27 of them the effect-log binary-mode PR), residue 69, keyword 11, env-skip 5, flaky 1. `ajax_eval.py` routes `q` -> class with BM25 kNN and EmbeddingGemma kNN/centroid (`data/eval-ajax-20261026.json`):
+
+| split | bm25_knn | emb_knn | emb_centroid |
+|---|---|---|---|
+| leave-one-record-out Hit@1 / Hit@3 | .884 / .957 | .861 / .949 | .750 / .890 |
+| leave-one-FILE-out Hit@1 / Hit@3 | .448 / .537 | .440 / .525 | .418 / .517 |
+
+Majority class .222. The record split is what a re-run sees (other failures of the same module already labelled); the file split is the honest number for a never-seen module, where the test-file name no longer leaks the label.

@@ -4,3 +4,5 @@ __pycache__/
 notes/local-jobs-1026/dig_*.md
 notes/local-jobs-1026/drill_*.md
 !data/ajax-win-failures.jsonl
+!data/ajax-pins.json
+!data/eval-ajax-*.json
