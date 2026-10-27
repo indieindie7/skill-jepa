@@ -39,6 +39,7 @@ Reward source = the trace, not hand labels. Each route row becomes one training 
 - Pass/fail: trace_pairs.jsonl regenerates nightly with 0 duplicate keys; >= 300 rows with
   reward != 0 before step 3.
 - 10-26 20:30 LIVE: trace_merge.py nightly (sec 6), 213 clean rows on day 1, +.033 hit1 on the AVB head (sec 4 numbers in sec 6 line); new-sid volume from here ~10-20 rows/day, next retrain fires itself at 300 new rows.
+- 10-26 21:40 SAGE RELABEL = NO GAIN (`trace_relabel.py` 59 lines: Sage-A1.5 on 8093 judges each brief_only/miss trace row against its label + 7 nearest skills by embedding + none; needs chat_template_kwargs enable_thinking=false or content comes back empty; ~8 min per 145 rows, GPU picked by start_own, stopped after). 145 judged: agree 9, other skill 48, none 88 (too conservative). Retrain with relabelled rows `data/avb-trace-relabel-20261026.json`: head .576/.743, refit .602+-.016/.728; drop-none variant .574/.750, .585/.731; baseline self-labels .599/.751, .583/.754. VERDICT: router self-labels beat Sage relabels on both axes; keep the self-labelled loop, drop the judge pass. Head still data-bound: next = wait for the nightly rows (auto-retrain at 300) or more none-aware data (data/nomatch.jsonl into train).
 
 ## 2. Keep the frozen-encoder router as the control (DONE, keep)
 gate_soft + prevskill stays the baseline every later model must beat on the same label set
