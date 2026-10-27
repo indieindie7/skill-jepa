@@ -11,7 +11,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROUTE_LOG = os.path.join(HERE, "..", "ops", "route.log")
 USAGE = os.path.expanduser("~/.claude/skills/usage.jsonl")
 WINDOW = 600
-REWARD = {"brief_only": 1, "full_read": 1, "miss": -1, "none": 0, "none+read": 0, "explore_hit": 1, "explore_miss": 0}
+REWARD = {"brief_only": 1, "full_read": 1, "miss": -1, "none": 0, "none+read": 0, "explore_hit": 1, "explore_miss": 0, "suspect_hit": 1, "suspect_miss": 0}
 
 
 def ts(s, fmt):
@@ -54,6 +54,7 @@ def main():
         conf = p[1]; cands = [c.split(":")[0] for c in p[2].split(",") if c]
         sid = p[4] if len(p) > 4 else ""
         ex = p[5][8:] if len(p) > 5 and p[5].startswith("explore=") else ""
+        su = p[5][8:] if len(p) > 5 and p[5].startswith("suspect=") else ""   # 10-27 23:xx usual-suspect arm, logged apart from explore
         ref = p[6][7:] if len(p) > 6 and p[6].startswith("refute=") else ""   # 10-27 refute column; absent before today = no prediction
         if (sid, p[0], p[3]) in seen: continue
         seen.add((sid, p[0], p[3]))
@@ -69,7 +70,10 @@ def main():
         if ex:
             cls = "explore_hit" if ex in read else "explore_miss"
             label = ex if cls == "explore_hit" else ""
-        rows.append({"query": p[3], "sid": sid, "t": p[0], "route_top": cands[:3], "conf": conf, "class": cls, "class_main": cls_main, "explore": ex, "refute": ref, "refuted": refuted(ref, read) if ref else None,
+        if su:
+            cls = "suspect_hit" if su in read else "suspect_miss"
+            label = su if cls == "suspect_hit" else ""
+        rows.append({"query": p[3], "sid": sid, "t": p[0], "route_top": cands[:3], "conf": conf, "class": cls, "class_main": cls_main, "explore": ex, "suspect": su, "refute": ref, "refuted": refuted(ref, read) if ref else None,
                      "read_skill": rs, "label": label, "reward": REWARD[cls] if label else 0})
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     with open(a.out, "w", encoding="utf-8", newline="\n") as f:

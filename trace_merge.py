@@ -23,7 +23,8 @@ def convert(rows, skills, old_sids, have):
     new, drop = [], {}
     for r in rows:
         sid, q, lab = r.get("sid", ""), r["query"], r.get("label", "")
-        why = ("explore_miss" if r["class"] == "explore_miss"   # 10-27 exploration slot: no skill read = no label; explore_hit is a labelled row (label = explore skill)
+        why = ("suspect_miss" if r["class"] == "suspect_miss"   # 10-27 23:xx usual-suspect slot: miss = no label, suspect_hit is a labelled row (label = suspect skill), counted apart from explore
+               else "explore_miss" if r["class"] == "explore_miss"   # 10-27 exploration slot: no skill read = no label; explore_hit is a labelled row (label = explore skill)
                else "empty_sid" if not sid else "bad_sid" if not re.fullmatch(r"[0-9a-f]{8}", sid) else "in_pairs" if sid in old_sids
                else "short_q" if len(q) < 8 or q.startswith("<") else "no_label" if not lab and r["class"] != "none"
                else "unknown_skill" if lab and lab not in skills else None)
@@ -41,7 +42,7 @@ LABELLED = ("brief_only", "full_read", "miss")
 
 
 def surprise(rows):
-    """Night's rows -> (agreement, agreement_read, explore_hit_rate). agreement = labelled rows whose label == router top-1
+    """Night's rows -> (agreement, agreement_read, explore_hit_rate, explore_hit, explore_miss, suspect_hit_rate, suspect_hit, suspect_miss). agreement = labelled rows whose label == router top-1
     (brief_only + full_read vs miss; brief_only agrees by construction, so agreement_read = full_read vs miss only is logged too).
     Rows carrying an explore slot count by class_main for agreement (their `class` is explore_*)."""
     cm = [(r.get("class_main") or r["class"], r) for r in rows]
@@ -50,7 +51,8 @@ def surprise(rows):
     rd = [c for c in lab if c != "brief_only"]
     agr = sum(1 for c in rd if c == "full_read") / len(rd) if rd else None
     eh = sum(1 for r in rows if r["class"] == "explore_hit"); em = sum(1 for r in rows if r["class"] == "explore_miss")
-    return ag, agr, (eh / (eh + em) if eh + em else None), eh, em
+    sh = sum(1 for r in rows if r["class"] == "suspect_hit"); sm = sum(1 for r in rows if r["class"] == "suspect_miss")   # never pooled with explore
+    return ag, agr, (eh / (eh + em) if eh + em else None), eh, em, (sh / (sh + sm) if sh + sm else None), sh, sm
 
 
 def falsifier(rows):
@@ -81,13 +83,13 @@ def main():
     msg = f"trace {len(tp)} kept {len(new)} dropped {sum(drop.values())} {drop} embed {len(todo)} total {len(cur) + len(new)}"
     st = json.load(open(STATE)) if os.path.exists(STATE) else {"rows_since_retrain": 0, "last_retrain": None, "last_retrain_result": None}
     nrows = [r for r in tp if r["t"] > st.get("last_run", "")]   # the night's rows = trace rows newer than the last successful run
-    ag, agr, ehr, eh, em = surprise(nrows)
+    ag, agr, ehr, eh, em, shr, sh, sm = surprise(nrows)
     fs, fr, fn = falsifier(nrows)
     if "retrain_hist" not in st:   # seed from the one retrain recorded before this field existed
         m = re.search(r"hit1 ([0-9.]+)", st.get("last_retrain_result") or ""); st["retrain_hist"] = [float(m.group(1))] if m else []
     if a.dry_run:
         print("dry-run " + msg); st = dict(st); st["rows_total"] = len(cur) + len(new); st["rows_since_retrain"] += len(new)
-        h = list(st.get("history", []))[-29:] + [{"date": time.strftime("%F"), "n_new": len(new), "agreement": ag, "agreement_read": agr, "explore_hit_rate": ehr, "explore_hit": eh, "explore_miss": em, "falsifier_score": fs, "refuted": fr, "with_prediction": fn, "hit1": None}]
+        h = list(st.get("history", []))[-29:] + [{"date": time.strftime("%F"), "n_new": len(new), "agreement": ag, "agreement_read": agr, "explore_hit_rate": ehr, "explore_hit": eh, "explore_miss": em, "suspect_hit_rate": shr, "suspect_hit": sh, "suspect_miss": sm, "falsifier_score": fs, "refuted": fr, "with_prediction": fn, "hit1": None}]
         st["history"] = h; st["low_surprise"] = low_surprise(h, st["retrain_hist"]); print(json.dumps(st, indent=1)); return 0
     if todo:
         import skilljepa as sj
@@ -110,9 +112,9 @@ def main():
         if m: st["retrain_hist"] = (st["retrain_hist"] + [float(m.group(1))])[-30:]; run_hit1 = float(m.group(1))
         if r.returncode == 0: st["rows_since_retrain"] = 0
         msg += " | retrain " + res
-    st["history"] = (st.get("history", []) + [{"date": time.strftime("%F"), "n_new": len(new), "agreement": ag, "agreement_read": agr, "explore_hit_rate": ehr, "explore_hit": eh, "explore_miss": em, "falsifier_score": fs, "refuted": fr, "with_prediction": fn, "hit1": run_hit1}])[-30:]
+    st["history"] = (st.get("history", []) + [{"date": time.strftime("%F"), "n_new": len(new), "agreement": ag, "agreement_read": agr, "explore_hit_rate": ehr, "explore_hit": eh, "explore_miss": em, "suspect_hit_rate": shr, "suspect_hit": sh, "suspect_miss": sm, "falsifier_score": fs, "refuted": fr, "with_prediction": fn, "hit1": run_hit1}])[-30:]
     st["low_surprise"] = low_surprise(st["history"], st["retrain_hist"])
-    msg += f" | surprise agree {ag if ag is None else round(ag, 3)} explore_hit_rate {ehr if ehr is None else round(ehr, 3)} ({eh}/{eh + em}) falsifier_score {fs if fs is None else round(fs, 3)} ({fr}/{fn}) low_surprise {st['low_surprise']}"
+    msg += f" | surprise agree {ag if ag is None else round(ag, 3)} explore_hit_rate {ehr if ehr is None else round(ehr, 3)} ({eh}/{eh + em}) suspect_hit_rate {shr if shr is None else round(shr, 3)} ({sh}/{sh + sm}) falsifier_score {fs if fs is None else round(fs, 3)} ({fr}/{fn}) low_surprise {st['low_surprise']}"
     json.dump(st, open(STATE, "w"), indent=1); open(LOG, "a", encoding="utf-8").write(f"{st['last_run']} {msg}\n"); print(msg); return 0
 
 
