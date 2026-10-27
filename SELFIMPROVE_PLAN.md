@@ -83,6 +83,8 @@ behind BM25, pass = Hit@1 > 0.62) is the first thing the data loop pays for.
 
 - 10-27 ref: Julia Turc ug9el1OGGEw (video-notes tree/348): LoRA r=1 matched r=16 on a 27B query-difficulty router; adapter stable rank median 3/16; label ORDER in the prompt swung zero-shot 26->48.5%. If 3b revives: r=1-4, measure stable rank, test candidate order in judge/policy prompts.
 
+- 10-27 survey notes/related-work-2026-10-27.md (Sonnet, web). Borrow next for AVB: listwise CE rerank loss (SkillRouter 2603.22455, 74.0 vs 43.3 Hit@1 pointwise), false-negative filter on mined negatives, embed skill BODY not just description; Tool2Vec (2409.02141) per-skill prototype = mean of past-prompt embs + multi-label BCE with none = all-zero; abstain as learned class + risk-coverage curve (Deep Gamblers/SelectiveNet).
+
 ## 4. Distil to the tiny model (LATER)
 - Target: a model small enough to stay resident beside other small LLMs: <= 300M params
   (EmbeddingGemma size) or the predictor MLP itself (today ~MB, numpy) with the GRPO policy as
