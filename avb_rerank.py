@@ -55,9 +55,22 @@ def load_extra(path, names, Y):
             "allp_prev": [{lab[j]} if j >= 0 and lab[j] >= 0 else set() for j in prv]}
 
 
+def load_nomatch(path, names, Y, drop_q):
+    """--nomatch rows (data/nomatch.jsonl: prompts that matched no skill) -> NONE rows (lab -1, allp empty, no prev ctx, unique sid per row). Embeddings cached in emb_nomatch.npz (keyed by prompt text).
+    Prompts whose text equals a val/test row of pairs.jsonl (drop_q, normalised) are dropped. -> (arrays like load_extra, n_dropped)."""
+    nz = lambda t: " ".join(t.lower().split()); raw = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]; keep = [r for r in raw if nz(r["prompt"]) not in drop_q]
+    cache = os.path.join(os.path.dirname(path), "emb_nomatch.npz"); qs = [r["prompt"] for r in keep]
+    if os.path.exists(cache) and list(np.load(cache, allow_pickle=True)["q"]) == qs: X0 = np.load(cache, allow_pickle=True)["X"]
+    else: X0 = sj.embed([sj.Q_PRE + q for q in qs]); np.savez(cache, X=X0, q=np.array(qs, dtype=object))
+    rows = [{"q": r["prompt"], "t": r.get("t", "2026-10-26T00:00:00Z"), "sid": r.get("sid") or f"nomatch{i}"} for i, r in enumerate(keep)]   # unique sid -> no prev chaining between unrelated prompts
+    m = len(rows); lab = np.full(m, -1); prv = np.full(m, -1); plab = np.full(m, -1); B, Pr = af.lex(rows, names)
+    return {"X": sj.with_ctx(X0, Y, prv, plab, "prevskill"), "lab": lab, "allp": [set() for _ in rows], "sid": np.array([r["sid"] for r in rows]), "plab": plab, "B": B, "Pr": Pr,
+            "allp_prev": [set() for _ in rows]}, len(raw) - len(keep)
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--no-attn", action="store_true"); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--topk", type=int, default=16)
-    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out"); ap.add_argument("--extra"); ap.add_argument("--tag"); a = ap.parse_args()
+    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out"); ap.add_argument("--extra"); ap.add_argument("--nomatch"); ap.add_argument("--tag"); a = ap.parse_args()
     if a.tag: a.out = a.out or os.path.join(pe.DATA, f"avb-{a.tag}.json")
     assert a.out, "--out or --tag"
     if a.v1: a.topk, a.no_bm25_feats, a.no_refit = 8, True, True
@@ -81,6 +94,10 @@ def main():
     si, ti = np.where(sub)[0], np.where(tr)[0]; vi, ei = S["val"]["idx"], S["test"]["idx"]
     parts = {"val": part(vi, sj.knn_energies(X[sub], lab[sub], X[vi], len(Y))), "test": part(ei, sj.knn_energies(X[tr], lab[tr], X[ei], len(Y)))}
     ex = load_extra(a.extra, names, Y) if a.extra and os.path.getsize(a.extra) else None   # extra rows join the head TRAIN/REFIT pools only (val/test knn pools unchanged)
+    nmd = None
+    if a.nomatch:   # NONE rows; leakage guard vs val/test prompts of pairs.jsonl
+        nz = lambda t: " ".join(t.lower().split()); nm_, nmd = load_nomatch(a.nomatch, names, Y, {nz(pairs[i]["q"]) for i in np.r_[vi, ei]}); print("nomatch rows", len(nm_["lab"]), "dropped (in val/test)", nmd, flush=True)
+        ex = nm_ if ex is None else {k: (np.r_[ex[k], nm_[k]] if k in ("lab", "plab", "sid") else np.vstack([ex[k], nm_[k]]) if k in ("X", "B", "Pr") else ex[k] + nm_[k]) for k in ex}
     if ex:
         m_ = len(ex["lab"]); en = np.arange(n, n + m_); si, ti = np.r_[si, en], np.r_[ti, en]; X, lab, plab, B, Pr = np.vstack([X, ex["X"]]), np.r_[lab, ex["lab"]], np.r_[plab, ex["plab"]], np.vstack([B, ex["B"]]), np.vstack([Pr, ex["Pr"]])
         allp, allp_prev = allp + ex["allp"], allp_prev + ex["allp_prev"]
@@ -92,7 +109,7 @@ def main():
     agg = lambda k: {q: [round(float(np.mean([r[k][q] for r in res])), 3), round(float(np.std([r[k][q] for r in res])), 3)] for q in res[0][k]}
     out = json.load(open(a.out, encoding="utf-8")) if os.path.exists(a.out) else {}
     info = {"K": K, "union": union, "bm25_feats": lexf, "refit": not a.no_refit, "recallK": {k: round(p["recall"], 3) for k, p in parts.items()}, "n_out_of_k": {k: p["out"] for k, p in parts.items()},
-            "rows": {k: p["n"] for k, p in parts.items()}, "params": sum(p.numel() for p in ms[0][0].parameters()), "secs": round(time.time() - t0, 1), "prior_rows_test": int((Pr[ei].sum(1) > 0).sum())} | ({"extra_rows": len(ex["lab"])} if ex else {})
+            "rows": {k: p["n"] for k, p in parts.items()}, "params": sum(p.numel() for p in ms[0][0].parameters()), "secs": round(time.time() - t0, 1), "prior_rows_test": int((Pr[ei].sum(1) > 0).sum())} | ({"extra_rows": len(ex["lab"])} if ex else {}) | ({"nomatch_file": a.nomatch, "nomatch_dropped_leak": nmd} if a.nomatch else {})
     out.update({"n": {"train_head": int(len(parts["train"]["y"])), "val": len(parts["val"]["y"]), "test": len(lt_), "test_labelled": int((lt_ >= 0).sum()), "test_none": int((lt_ < 0).sum()), "refit": len(parts["refit"]["y"]) if "refit" in parts else None},
                 "base_knn": S["base"], "recall8": round(S["recall8"], 3), "always_abstain_acc": round(float((lt_ < 0).mean()), 3), nm + "_head": agg("argmax"), nm + "_head_thr": agg("thr"), nm + "_runs": res, nm + "_info": info})
     if not a.no_refit: out.update({nm + "_refit": agg("refit_argmax"), nm + "_refit_thr": agg("refit_thr")})
