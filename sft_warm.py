@@ -9,7 +9,7 @@ ap.add_argument("--model", default=r"C:\llm\models\qwen35-0.8b-abl"); ap.add_arg
 ap.add_argument("--nomatch", default=os.path.join(DATA, "nomatch.jsonl")); ap.add_argument("--exclude-eval", action="store_true")
 ap.add_argument("--epochs", type=int, default=2); ap.add_argument("--lr", type=float, default=2e-4); ap.add_argument("--batch", type=int, default=16)
 ap.add_argument("--eval-rows", type=int, default=256); ap.add_argument("--gpu", default="auto"); ap.add_argument("--rank", type=int, default=16)
-ap.add_argument("--targets", default="q_proj,v_proj"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--smoke", action="store_true")
+ap.add_argument("--targets", default="q_proj,v_proj"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--smoke", action="store_true"); ap.add_argument("--tag", default="", help="if set, out dir = sft-<date>-<tag>-lora")
 ap.add_argument("--none-frac", type=float, default=0.0, help="oversample none rows (time-split TRAIN part of pairs.jsonl, unlabelled, knn top-8 candidates) until none ~= this fraction of the train set")
 ap.add_argument("--exclude-time-test", action="store_true", help="drop train rows whose query is in the time-split test part")
 ap.add_argument("--exclude-val", action="store_true", help="also drop train rows in the val slice (train positions 0.49-0.70) that policy_eval --none-thr auto tunes on")
@@ -77,7 +77,7 @@ for ep in range(a.epochs):
         tot += loss.item() * len(rr)
     acc, p = evaluate(); hist.append({"epoch": ep + 1, "train_loss": round(tot / len(tr), 4), "acc_eval": acc, "p_eval": p, "secs": round(time.time() - t0)})
     print(json.dumps(hist[-1]), flush=True)
-out = os.path.join(DATA, f"sft-{datetime.date.today():%Y%m%d}" + ("-bal" if a.none_frac > 0 else "") + ("-smoke" if a.smoke else "") + "-lora"); pm.save_pretrained(out)
+out = os.path.join(DATA, f"sft-{datetime.date.today():%Y%m%d}" + (f"-{a.tag}" if a.tag else ("-bal" if a.none_frac > 0 else "") + ("-smoke" if a.smoke else "")) + "-lora"); pm.save_pretrained(out)
 json.dump(sorted(seen_q), open(os.path.join(out, "train_queries.json"), "w", encoding="utf-8"))   # policy_eval: seen/unseen split
 vram = round(torch.cuda.max_memory_allocated() / 1e9, 2)
 if PS: a_time = time_eval(); print(json.dumps({"after_time_test": a_time}), flush=True)
