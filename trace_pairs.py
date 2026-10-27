@@ -1,6 +1,8 @@
 """trace_pairs.py: data/trace_pairs.jsonl = one row per routed prompt (join of ops/route.log + skills/usage.jsonl).
 Join copied from ops/route_trace.py (that file imports opsd at import time, so not importable): same sid, 0..600 s window.
 reward: +1 brief_only/full_read, -1 miss, 0 none/none+read.
+10-27 exploration slot: route.log col 6 'explore=<skill>' -> class explore_hit (skill read in the window; label = that skill, reward +1)
+or explore_miss (reward 0); the normal class of the real top candidate is kept as class_main (same as ops/route_trace.py cls_main).
   py -3.13 -I trace_pairs.py [--days N] [--out PATH]"""
 import os, sys, json, time, argparse
 
@@ -8,7 +10,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROUTE_LOG = os.path.join(HERE, "..", "ops", "route.log")
 USAGE = os.path.expanduser("~/.claude/skills/usage.jsonl")
 WINDOW = 600
-REWARD = {"brief_only": 1, "full_read": 1, "miss": -1, "none": 0, "none+read": 0}
+REWARD = {"brief_only": 1, "full_read": 1, "miss": -1, "none": 0, "none+read": 0, "explore_hit": 1, "explore_miss": 0}
 
 
 def ts(s, fmt):
@@ -36,6 +38,7 @@ def main():
         if not t or t < t_min or p[3].startswith("<") or len(p[3]) < 8: continue
         conf = p[1]; cands = [c.split(":")[0] for c in p[2].split(",") if c]
         sid = p[4] if len(p) > 4 else ""
+        ex = p[5][8:] if len(p) > 5 and p[5].startswith("explore=") else ""
         if (sid, p[0], p[3]) in seen: continue
         seen.add((sid, p[0], p[3]))
         read = sorted({sk for ut, sk, us in use if 0 <= ut - t <= WINDOW and (not sid or not us or us == sid) and len(sk) > 2})
@@ -46,7 +49,11 @@ def main():
         else: cls = "miss"
         rs = top if top in read else (read[0] if read else "")
         label = top if cls == "brief_only" else rs
-        rows.append({"query": p[3], "sid": sid, "t": p[0], "route_top": cands[:3], "conf": conf, "class": cls,
+        cls_main = cls
+        if ex:
+            cls = "explore_hit" if ex in read else "explore_miss"
+            label = ex if cls == "explore_hit" else ""
+        rows.append({"query": p[3], "sid": sid, "t": p[0], "route_top": cands[:3], "conf": conf, "class": cls, "class_main": cls_main, "explore": ex,
                      "read_skill": rs, "label": label, "reward": REWARD[cls] if label else 0})
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     with open(a.out, "w", encoding="utf-8", newline="\n") as f:
