@@ -55,7 +55,7 @@ def main():
         elif not read: cls = "brief_only"
         elif top in read: cls = "full_read"
         else: cls = "miss"
-        rows.append(dict(t=t, day=p[0][:10], conf=conf, cands=cands, top=top, read=read, cls=cls, explore=ex, refute=ref))
+        rows.append(dict(t=t, day=p[0][:10], sid=sid, conf=conf, cands=cands, top=top, read=read, cls=cls, explore=ex, refute=ref))
     out = [f"# nudger measurements {time.strftime('%Y-%m-%d %H:%M')} (nudger_measure.py, read-only over route.log {len(rows)} rows, usage.jsonl {len(use)} reads, {len(skills)} skills)", ""]
     # A4
     live = [r for r in rows if r["refute"]]
@@ -94,6 +94,24 @@ def main():
     for r in rows:
         if r["read"]: rand_hits += len(r["read"]) / max(1, len(skills))
     out.append(f"- expected hit rate of a uniform-random explore candidate: {rand_hits/max(1,len(rows)):.4f}")
+    # usual-suspects policies (causal, 14 d): candidate = skill most often read OUTSIDE top-3 recently, not in this row's top-3
+    META = {"ops-manager", "local-gpu-ai"}
+    def suspects(key, skip=frozenset()):
+        hist = collections.deque(); hits = shown = 0; picks = collections.Counter()
+        for r in rows:
+            while hist and r["t"] - hist[0][0] > 14 * 86400: hist.popleft()
+            cnt = collections.Counter(s for _, k, s in hist if key(r) == k)
+            cand = next((s for s, _ in cnt.most_common() if s not in r["cands"][:3] and s not in skip), "")
+            if cand:
+                shown += 1; hits += cand in r["read"]; picks[cand] += 1
+            for s in r["read"]:
+                if s not in r["cands"][:3]: hist.append((r["t"], key(r), s))
+        return hits, shown, picks.most_common(3)
+    for name, key, skip in (("global", lambda r: 0, frozenset()), ("per-chat (sid)", lambda r: r["sid"], frozenset()),
+                            ("global, no meta skills", lambda r: 0, META), ("per-chat, no meta skills", lambda r: r["sid"], META)):
+        h, n, top = suspects(key, skip)
+        out.append(f"- usual-suspects {name}: candidate read in window {h}/{n} = {h/max(1,n):.4f}; most picked: " + ", ".join(f"{s} {c}" for s, c in top))
+    out.append("- caveat: a usual-suspect hit is a systematic router miss (exploitation), not exploration; meta skills (ops-manager, local-gpu-ai) are read by every chat regardless of route")
     # reads not in top-3 ranked by frequency = what exploration must find
     miss_sk = collections.Counter(s for r in with_read for s in r["read"] if s not in r["cands"][:3])
     out.append("- skills read but outside top-3 (top 10): " + ", ".join(f"{s} {n}" for s, n in miss_sk.most_common(10)))
