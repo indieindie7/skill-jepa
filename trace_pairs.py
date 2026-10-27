@@ -22,7 +22,11 @@ def ts(s, fmt):
 def refuted(ref, read):
     """10-27 SELFIMPROVE_PLAN sec 9 step 3: check a route.log col-7 prediction against the skills read in the join window.
     Returns True/False, or None when there is no (known) prediction. 'within 2 turns' is approximated by the same 600 s window
-    as the class join. Copy lives in ops/route_trace.py and skilljepa/trace_pairs.py (keep in sync)."""
+    as the class join. Copy lives in ops/route_trace.py and skilljepa/trace_pairs.py (keep in sync).
+    SIGN: the col-7 text is the REFUTING EVENT (plan sec 9: 'what would make this wrong'), so True = that event happened = route refuted;
+    e.g. low conf + nothing read -> refuted. Known limit (nudger-measure 10-27): template is f(conf) and read/not-read is the class,
+    so refuted ~ f(conf, class); the score is a calibration readout, new falsifier info comes from the explore slot + judge_fresh.
+    """
     if ref.startswith("reads other skill than "): return bool(set(read) - {ref[len("reads other skill than "):]})
     if ref == "no skill read within 2 turns": return not read
     if ref == "reads any skill within 2 turns": return bool(read)
