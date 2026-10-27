@@ -51,3 +51,10 @@
   | 2026-10-27 | 95 | 7 | 1.72 |
 - novel top-1 (never routed before) over all rows: 66/1867; skills ever top-1: 66/78
 - top-1 share, top 5: video-notes 0.55, ops-manager 0.10, goobi-brawler 0.09, local-gpu-ai 0.09, swat4-mod 0.03
+
+## A1 context-dependence split 2026-10-27 19:56 (a1_split.py, Sage tags ctx|free from prompt text only; rows = judge_disagree.jsonl + 60 more via judge_fresh seed 2)
+  | group | n | judge==router | judge==label | router==label | judge says none |
+  |---|---|---|---|---|---|
+  | free | 36 | 0.306 | 0.333 | 0.889 | 0.306 |
+  | ctx | 43 | 0.116 | 0.116 | 0.907 | 0.512 |
+- verdict: judge==router free 0.306 vs ctx 0.116; A1 (gap = loop bias) WEAKENED: gap is mostly missing context (threshold .15); router==label on both groups shows what the self-labels reward
