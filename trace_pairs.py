@@ -3,6 +3,7 @@ Join copied from ops/route_trace.py (that file imports opsd at import time, so n
 reward: +1 brief_only/full_read, -1 miss, 0 none/none+read.
 10-27 exploration slot: route.log col 6 'explore=<skill>' -> class explore_hit (skill read in the window; label = that skill, reward +1)
 or explore_miss (reward 0); the normal class of the real top candidate is kept as class_main (same as ops/route_trace.py cls_main).
+10-27 refutation: route.log col 7 'refute=<template>' -> row refute (text) + refuted true|false (None = row has no prediction), same check as ops/route_trace.py.
   py -3.13 -I trace_pairs.py [--days N] [--out PATH]"""
 import os, sys, json, time, argparse
 
@@ -16,6 +17,16 @@ REWARD = {"brief_only": 1, "full_read": 1, "miss": -1, "none": 0, "none+read": 0
 def ts(s, fmt):
     try: return time.mktime(time.strptime(s, fmt))
     except ValueError: return None
+
+
+def refuted(ref, read):
+    """10-27 SELFIMPROVE_PLAN sec 9 step 3: check a route.log col-7 prediction against the skills read in the join window.
+    Returns True/False, or None when there is no (known) prediction. 'within 2 turns' is approximated by the same 600 s window
+    as the class join. Copy lives in ops/route_trace.py and skilljepa/trace_pairs.py (keep in sync)."""
+    if ref.startswith("reads other skill than "): return bool(set(read) - {ref[len("reads other skill than "):]})
+    if ref == "no skill read within 2 turns": return not read
+    if ref == "reads any skill within 2 turns": return bool(read)
+    return None
 
 
 def main():
@@ -39,6 +50,7 @@ def main():
         conf = p[1]; cands = [c.split(":")[0] for c in p[2].split(",") if c]
         sid = p[4] if len(p) > 4 else ""
         ex = p[5][8:] if len(p) > 5 and p[5].startswith("explore=") else ""
+        ref = p[6][7:] if len(p) > 6 and p[6].startswith("refute=") else ""   # 10-27 refute column; absent before today = no prediction
         if (sid, p[0], p[3]) in seen: continue
         seen.add((sid, p[0], p[3]))
         read = sorted({sk for ut, sk, us in use if 0 <= ut - t <= WINDOW and (not sid or not us or us == sid) and len(sk) > 2})
@@ -53,7 +65,7 @@ def main():
         if ex:
             cls = "explore_hit" if ex in read else "explore_miss"
             label = ex if cls == "explore_hit" else ""
-        rows.append({"query": p[3], "sid": sid, "t": p[0], "route_top": cands[:3], "conf": conf, "class": cls, "class_main": cls_main, "explore": ex,
+        rows.append({"query": p[3], "sid": sid, "t": p[0], "route_top": cands[:3], "conf": conf, "class": cls, "class_main": cls_main, "explore": ex, "refute": ref, "refuted": refuted(ref, read) if ref else None,
                      "read_skill": rs, "label": label, "reward": REWARD[cls] if label else 0})
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     with open(a.out, "w", encoding="utf-8", newline="\n") as f:
@@ -61,7 +73,7 @@ def main():
     by = {}
     for r in rows: by[r["class"]] = by.get(r["class"], 0) + 1
     n = sum(1 for r in rows if r["reward"])
-    print(f"rows {len(rows)} " + " ".join(f"{k} {by.get(k, 0)}" for k in REWARD) + f" rewarded {n} -> {a.out}")
+    print(f"rows {len(rows)} " + " ".join(f"{k} {by.get(k, 0)}" for k in REWARD) + f" rewarded {n}" + (lambda w: f" refuted {sum(1 for r in w if r['refuted'])}/{len(w)}")([r for r in rows if r["refuted"] is not None]) + f" -> {a.out}")
     if n < 300: print(f"STOP partial: {n} of 300")
 
 

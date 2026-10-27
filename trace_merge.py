@@ -53,6 +53,14 @@ def surprise(rows):
     return ag, agr, (eh / (eh + em) if eh + em else None), eh, em
 
 
+def falsifier(rows):
+    """Night's rows -> (falsifier_score, n_refuted, n_with_prediction). SELFIMPROVE_PLAN sec 9: refuted / rows with a prediction
+    (trace_pairs.py writes refuted true|false for rows whose route.log line has col 7 'refute=...'; None = no prediction).
+    Score is None when there are 0 predictions."""
+    wp = [r for r in rows if r.get("refuted") is not None]; nr = sum(1 for r in wp if r["refuted"])
+    return (nr / len(wp) if wp else None), nr, len(wp)
+
+
 def low_surprise(hist, retrain_hist, k=7):
     """Ashby 2nd-loop trigger (SELFIMPROVE_PLAN sec 9): last k runs all agree > 0.9 AND hit1 did not improve over the last k retrains
     (fewer than 2 retrains = nothing improved). No action yet, signal only."""
@@ -74,11 +82,12 @@ def main():
     st = json.load(open(STATE)) if os.path.exists(STATE) else {"rows_since_retrain": 0, "last_retrain": None, "last_retrain_result": None}
     nrows = [r for r in tp if r["t"] > st.get("last_run", "")]   # the night's rows = trace rows newer than the last successful run
     ag, agr, ehr, eh, em = surprise(nrows)
+    fs, fr, fn = falsifier(nrows)
     if "retrain_hist" not in st:   # seed from the one retrain recorded before this field existed
         m = re.search(r"hit1 ([0-9.]+)", st.get("last_retrain_result") or ""); st["retrain_hist"] = [float(m.group(1))] if m else []
     if a.dry_run:
         print("dry-run " + msg); st = dict(st); st["rows_total"] = len(cur) + len(new); st["rows_since_retrain"] += len(new)
-        h = list(st.get("history", []))[-29:] + [{"date": time.strftime("%F"), "n_new": len(new), "agreement": ag, "agreement_read": agr, "explore_hit_rate": ehr, "explore_hit": eh, "explore_miss": em, "hit1": None}]
+        h = list(st.get("history", []))[-29:] + [{"date": time.strftime("%F"), "n_new": len(new), "agreement": ag, "agreement_read": agr, "explore_hit_rate": ehr, "explore_hit": eh, "explore_miss": em, "falsifier_score": fs, "refuted": fr, "with_prediction": fn, "hit1": None}]
         st["history"] = h; st["low_surprise"] = low_surprise(h, st["retrain_hist"]); print(json.dumps(st, indent=1)); return 0
     if todo:
         import skilljepa as sj
@@ -101,9 +110,9 @@ def main():
         if m: st["retrain_hist"] = (st["retrain_hist"] + [float(m.group(1))])[-30:]; run_hit1 = float(m.group(1))
         if r.returncode == 0: st["rows_since_retrain"] = 0
         msg += " | retrain " + res
-    st["history"] = (st.get("history", []) + [{"date": time.strftime("%F"), "n_new": len(new), "agreement": ag, "agreement_read": agr, "explore_hit_rate": ehr, "explore_hit": eh, "explore_miss": em, "hit1": run_hit1}])[-30:]
+    st["history"] = (st.get("history", []) + [{"date": time.strftime("%F"), "n_new": len(new), "agreement": ag, "agreement_read": agr, "explore_hit_rate": ehr, "explore_hit": eh, "explore_miss": em, "falsifier_score": fs, "refuted": fr, "with_prediction": fn, "hit1": run_hit1}])[-30:]
     st["low_surprise"] = low_surprise(st["history"], st["retrain_hist"])
-    msg += f" | surprise agree {ag if ag is None else round(ag, 3)} explore_hit_rate {ehr if ehr is None else round(ehr, 3)} ({eh}/{eh + em}) low_surprise {st['low_surprise']}"
+    msg += f" | surprise agree {ag if ag is None else round(ag, 3)} explore_hit_rate {ehr if ehr is None else round(ehr, 3)} ({eh}/{eh + em}) falsifier_score {fs if fs is None else round(fs, 3)} ({fr}/{fn}) low_surprise {st['low_surprise']}"
     json.dump(st, open(STATE, "w"), indent=1); open(LOG, "a", encoding="utf-8").write(f"{st['last_run']} {msg}\n"); print(msg); return 0
 
 
