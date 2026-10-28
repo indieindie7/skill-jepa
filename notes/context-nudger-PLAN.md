@@ -45,9 +45,11 @@ Creativity side: nudger prefers candidates that are far (cosine) from the last 5
 - 10-27 18:41: nudger_measure.py (read-only) -> notes/nudger-measure-2026-10-27.md. A4 falsified + inversion bug; A3 least-routed worse than random; A6 baseline entropy collapse. Committed here, not pushed.
 - 10-27: JEPA chat ACCEPTED split slot, building (Sonnet): col 6 explore=<skill> (5% random) or suspect=<skill> (5% per-sid usual suspect, global fallback); classes suspect_hit/miss apart; suspect_hit_rate separate in trace_state. LIVE 661d362 pushed, opsd restarted; global fallback when sid < 3 reads, 10-min cache, meta skills not excluded; first rows 10-28 07:05.
 - NEXT: (1) DONE by JEPA chat: explore=random 3048d2b, refuted sign kept as designed; judge_fresh on explore rows offered to this chat; (2) DONE 10-27: usual-suspects retro per-chat .182 vs random .0136 (sec 2 A3); proposed split slot to JEPA chat; (3) DONE 10-27 A1 WEAKENED (sec 2 A1; a1_split.py e29d3e2).
+- 10-28 10:07 A3 live readout too early: 4 explore / 2 suspect rows since 661d362, 0 hits each (nudger_measure.py suspect line added). Re-read when >= 30 rows each (~1 week at current rate).
 
 ## 6. Peer chats' holds + inputs (10-27 replies)
 - Tree-router chat: read-only for me: ~/.claude/hooks/recall.py (BIG_TREE filter), recall_judge.py (+recall-judge.json, 2110 labels), route_effort.py, ops/opsd.py prev_prior()+route(). Eval tools: ops/treeroute_eval.py --sid-only (48 rows: base+prev Hit@1 .646 / Hit@3 .833), ops/recall_replay.py. Labels: ~/.claude/skills/usage.jsonl.
 - Windows support 3: backing research Documents/Tools/llm/research/runs/intelligence-autonomy/report.md (index at top; sec 2 Ashby ultrastability, sec 5 act-vs-ask refs, snippet-verified only).
 - AJAX chat owns ajax_export.py, ajax_eval.py, data/ajax-*.jsonl/json, eval-ajax-20261026.json, README "Second eval set". Falsifier baseline: bm25 kNN Hit@1 .884 record-LOO vs .448 file-held-out, majority .222 (file split = honest; use this split style for A7).
 - GPU 10-27 evening: gpu 1 = DOA review (Strata 8090) until ~20:10; gpu 0 free.
+- 10-28 input (Windows support 3): video-notes tree/363 Liquid AI LFM3 2B family; D1 2B decision model = JSON + confidence -> candidate abstain/falsifier head, cheap vs Sage 9 GB; parked idea #120 (ops/ideas.py), no test yet. Would fit A6 nudger as the small-space judge.

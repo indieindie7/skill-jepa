@@ -46,6 +46,7 @@ def main():
         conf = p[1]; cands = [c.split(":")[0] for c in p[2].split(",") if c]
         sid = p[4] if len(p) > 4 else ""
         ex = p[5][8:] if len(p) > 5 and p[5].startswith("explore=") else ""
+        su = p[5][8:] if len(p) > 5 and p[5].startswith("suspect=") else ""
         ref = p[6][7:] if len(p) > 6 and p[6].startswith("refute=") else ""
         if (sid, p[0], p[3]) in seen: continue
         seen.add((sid, p[0], p[3]))
@@ -55,7 +56,7 @@ def main():
         elif not read: cls = "brief_only"
         elif top in read: cls = "full_read"
         else: cls = "miss"
-        rows.append(dict(t=t, day=p[0][:10], sid=sid, conf=conf, cands=cands, top=top, read=read, cls=cls, explore=ex, refute=ref))
+        rows.append(dict(t=t, day=p[0][:10], sid=sid, conf=conf, cands=cands, top=top, read=read, cls=cls, explore=ex, suspect=su, refute=ref))
     out = [f"# nudger measurements {time.strftime('%Y-%m-%d %H:%M')} (nudger_measure.py, read-only over route.log {len(rows)} rows, usage.jsonl {len(use)} reads, {len(skills)} skills)", ""]
     # A4
     live = [r for r in rows if r["refute"]]
@@ -76,7 +77,9 @@ def main():
     out.append(f"- high/medium rows: refuted == (class==miss) on {agree:.3f} of {len(hm)} rows")
     # A3
     ex_rows = [r for r in rows if r["explore"]]
-    out += ["", "## A3 exploration slot", f"- live explore rows: {len(ex_rows)}; explore_hit: {sum(1 for r in ex_rows if r['explore'] in r['read'])}"]
+    su_rows = [r for r in rows if r["suspect"]]
+    out += ["", "## A3 exploration slot", f"- live explore rows: {len(ex_rows)}; explore_hit: {sum(1 for r in ex_rows if r['explore'] in r['read'])}",
+            f"- live suspect rows (split slot 661d362, since 10-27 20:02): {len(su_rows)}; suspect_hit: {sum(1 for r in su_rows if r['suspect'] in r['read'])}; verdict needs >= 30 rows each"]
     with_read = [r for r in rows if r["read"]]
     for k in (1, 3, 5):
         outside = sum(1 for r in with_read if any(s not in r["cands"][:k] for s in r["read"]))
