@@ -1,7 +1,8 @@
 """trace_merge.py: nightly loop trace_pairs -> data/pairs_trace.jsonl (+ data/emb_trace.npz) -> AVB head retrain at 300 new rows (SELFIMPROVE_PLAN sec 1/6/8).
 Rows in pairs.jsonl format; sids already in data/pairs.jsonl dropped (transcript-labelled = leakage, sec 8).
   py -3.13 -I trace_merge.py [--dry-run] [--retrain-at 300] [--force-retrain]   exit 2 = embedder 8084 down (nothing written)"""
-import os, sys, re, json, time, argparse, subprocess
+import os, sys, re, json, time, argparse, subprocess, shutil
+for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"): os.environ.setdefault(_v, "1")   # before numpy: the holdout gate forward is tiny matmuls
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__)); D = os.path.join(HERE, "data"); sys.path.insert(0, HERE)
@@ -9,6 +10,27 @@ NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 TP, PT, EMB = (os.path.join(D, f) for f in ("trace_pairs.jsonl", "pairs_trace.jsonl", "emb_trace.npz"))
 STATE, LOG = os.path.join(D, "trace_state.json"), os.path.join(D, "trace_merge.log")
 TRAIN_PY = r"C:\llm\qlora\venv\Scripts\python.exe"
+HEAD, CAND, PREV = (os.path.join(D, f) for f in ("avb_head.npz", "avb_head.cand.npz", "avb_head.prev.npz"))   # 10-28: served head (opsd col 8) / fresh retrain candidate / last accepted
+GATE_TOL = 0.005   # candidate must score hit1 >= last accepted - GATE_TOL on the frozen holdout (data/holdout.jsonl, holdout_check.py)
+
+
+def gate(cand, st, apply=True):
+    """10-28 frozen-holdout gate. Returns (accepted, msg). Hash mismatch = refuse (never score against a changed holdout). Accepted: cand -> data/avb_head.npz (old kept as avb_head.prev.npz) and
+    {date, hit1, hit3, acc_with_abstain} appended to st['holdout_hist']; else keep the old weights, log rollback. apply=False scores and decides but touches nothing."""
+    import holdout_check as hc
+    ok, vmsg = hc.verify()
+    if not ok: return False, "REFUSE holdout hash mismatch (" + vmsg + ")"
+    hist = st.setdefault("holdout_hist", [])
+    if not hist and os.path.exists(HEAD):   # first gated run: the head currently served is the first accepted baseline
+        b = hc.score(HEAD); hist.append({"date": time.strftime("%F"), "hit1": round(float(b["hit1"]), 4), "hit3": round(float(b["hit3"]), 4), "acc_with_abstain": round(float(b["acc_with_abstain"]), 4), "src": "baseline"})
+    m = hc.score(cand); last = hist[-1]["hit1"] if hist else -1.0; h1 = round(float(m["hit1"]), 4)
+    if h1 >= last - GATE_TOL:
+        if apply:
+            if os.path.exists(HEAD): shutil.copyfile(HEAD, PREV)
+            os.replace(cand, HEAD); hist.append({"date": time.strftime("%F"), "hit1": h1, "hit3": round(float(m["hit3"]), 4), "acc_with_abstain": round(float(m["acc_with_abstain"]), 4), "src": "retrain"}); del hist[:-30]
+        return True, f"accept holdout hit1 {h1} >= last accepted {last} - {GATE_TOL}"
+    if apply and os.path.exists(cand): os.remove(cand)
+    return False, f"rollback holdout hit1 {h1} < last accepted {last} - {GATE_TOL}; kept old weights"
 
 
 def jl(p):
@@ -73,7 +95,9 @@ def low_surprise(hist, retrain_hist, k=7):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--dry-run", action="store_true"); ap.add_argument("--retrain-at", type=int, default=300); ap.add_argument("--force-retrain", action="store_true"); a = ap.parse_args()
+    ap = argparse.ArgumentParser(); ap.add_argument("--dry-run", action="store_true"); ap.add_argument("--retrain-at", type=int, default=300); ap.add_argument("--force-retrain", action="store_true"); ap.add_argument("--gate-test", metavar="HEAD.npz", help="score this head through the holdout gate against the stored holdout_hist, print the decision, change nothing"); a = ap.parse_args()
+    if a.gate_test:
+        st = json.load(open(STATE)) if os.path.exists(STATE) else {}; ok, m = gate(a.gate_test, st, apply=False); print(("ACCEPT " if ok else "REJECT ") + m); return 0 if ok else 4
     if not a.dry_run: subprocess.run(["py", "-3.13", "-I", os.path.join(HERE, "trace_pairs.py")], cwd=HERE, creationflags=NOWIN, capture_output=True, check=True)
     skills = json.load(open(os.path.join(D, "skills.json"), encoding="utf-8")); old_sids = {p["sid"][:8] for p in jl(os.path.join(D, "pairs.jsonl"))}
     cur = jl(PT); have = {f"{p['sid']}|{p['t']}|{p['q']}" for p in cur}; tp = jl(TP)
@@ -102,8 +126,13 @@ def main():
     st["rows_total"] = len(cur) + len(new); st["rows_since_retrain"] += len(new); st["last_run"] = time.strftime("%F %T")
     run_hit1 = None
     if a.force_retrain or st["rows_since_retrain"] >= a.retrain_at:
+        import holdout_check as hc
+        hok, hmsg = hc.verify()
+        if not hok:   # 10-28: frozen holdout changed = no retrain, no new weights
+            msg += " | retrain REFUSED: holdout hash mismatch (" + hmsg + ")"; st["last_retrain_result"] = "REFUSED holdout hash mismatch"
+            json.dump(st, open(STATE, "w"), indent=1); open(LOG, "a", encoding="utf-8").write(f"{st['last_run']} {msg}\n"); print(msg); return 3
         tag = "trace-" + time.strftime("%Y%m%d"); out = os.path.join(D, f"avb-{tag}.json")
-        r = subprocess.run([TRAIN_PY, "avb_rerank.py", "--extra", PT, "--tag", tag], cwd=HERE, creationflags=NOWIN, capture_output=True, text=True, timeout=1500)
+        r = subprocess.run([TRAIN_PY, "avb_rerank.py", "--extra", PT, "--tag", tag, "--save", CAND], cwd=HERE, creationflags=NOWIN, capture_output=True, text=True, timeout=1500)
         try:
             j = json.load(open(out, encoding="utf-8")); h = j["avb2_head_thr"]; res = f"rc {r.returncode} extra {j['avb2_info'].get('extra_rows')} hit1 {h['hit1'][0]} acc_abstain {h['acc_with_abstain'][0]} (v2 .566/.751) -> {out}"
         except (OSError, KeyError, ValueError): res = f"rc {r.returncode} FAILED: {(r.stderr or r.stdout)[-300:]}"
@@ -111,6 +140,9 @@ def main():
         m = re.search(r"hit1 ([0-9.]+)", res)
         if m: st["retrain_hist"] = (st["retrain_hist"] + [float(m.group(1))])[-30:]; run_hit1 = float(m.group(1))
         if r.returncode == 0: st["rows_since_retrain"] = 0
+        if r.returncode == 0 and os.path.exists(CAND):
+            gok, gmsg = gate(CAND, st); res += " | gate " + gmsg; st["last_retrain_result"] = res
+            if not gok: st["last_rollback"] = {"date": time.strftime("%F %T"), "msg": gmsg}
         msg += " | retrain " + res
     st["history"] = (st.get("history", []) + [{"date": time.strftime("%F"), "n_new": len(new), "agreement": ag, "agreement_read": agr, "explore_hit_rate": ehr, "explore_hit": eh, "explore_miss": em, "suspect_hit_rate": shr, "suspect_hit": sh, "suspect_miss": sm, "falsifier_score": fs, "refuted": fr, "with_prediction": fn, "hit1": run_hit1}])[-30:]
     st["low_surprise"] = low_surprise(st["history"], st["retrain_hist"])

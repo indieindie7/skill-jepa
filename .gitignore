@@ -6,3 +6,5 @@ notes/local-jobs-1026/drill_*.md
 !data/ajax-win-failures.jsonl
 !data/ajax-pins.json
 !data/eval-ajax-*.json
+!data/holdout.sha256
+!data/arms-*.json

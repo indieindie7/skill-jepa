@@ -70,7 +70,7 @@ def load_nomatch(path, names, Y, drop_q):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--no-attn", action="store_true"); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--topk", type=int, default=16)
-    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out"); ap.add_argument("--extra"); ap.add_argument("--nomatch"); ap.add_argument("--tag"); a = ap.parse_args()
+    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out"); ap.add_argument("--extra"); ap.add_argument("--nomatch"); ap.add_argument("--tag"); ap.add_argument("--save"); a = ap.parse_args()
     if a.tag: a.out = a.out or os.path.join(pe.DATA, f"avb-{a.tag}.json")
     assert a.out, "--out or --tag"
     if a.v1: a.topk, a.no_bm25_feats, a.no_refit = 8, True, True
@@ -114,6 +114,9 @@ def main():
                 "base_knn": S["base"], "recall8": round(S["recall8"], 3), "always_abstain_acc": round(float((lt_ < 0).mean()), 3), nm + "_head": agg("argmax"), nm + "_head_thr": agg("thr"), nm + "_runs": res, nm + "_info": info})
     if not a.no_refit: out.update({nm + "_refit": agg("refit_argmax"), nm + "_refit_thr": agg("refit_thr")})
     if a.name == "avb2" and not a.no_attn: out.update({"recallK": info["recallK"], "n_out_of_k": info["n_out_of_k"], "K": K}); torch.save({"state": [[m.state_dict() for m in s] for s in ms], "din": parts["train"]["T"].shape[2], "K": K}, a.out.replace(".json", ".pt"))
+    if a.save:   # 10-28: torch-free head file for opsd col 8 / holdout_check / trace_merge gate: val-fit head of the seed with the lowest val CE + its val-tuned none thr (avb_np.py format)
+        import avb_np; b = min(range(len(res)), key=lambda i: res[i]["val_ce"])
+        avb_np.save_head(a.save, ms[b][0].state_dict(), {"thr": res[b]["thr_val"], "K": K, "din": int(parts["train"]["T"].shape[2]), "seed": b, "val_ce": res[b]["val_ce"], "epochs": res[b]["epochs"], "extra_rows": len(ex["lab"]) if ex else 0, "created": time.strftime("%F %T"), "src": a.out})
     json.dump(out, open(a.out, "w", encoding="utf-8"), indent=1); print(json.dumps({k: out[k] for k in out if k.startswith(nm) and not k.endswith("_runs")} | {"n": out["n"]}, indent=1))
 
 
