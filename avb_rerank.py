@@ -9,13 +9,16 @@ import numpy as np, torch, torch.nn as nn, torch.nn.functional as F
 import policy_eval as pe, skilljepa as sj, avb_feats as af
 
 
+ARCH = {"d": 256, "blocks": 2}   # 10-29 --d/--blocks (shrink step): defaults = production head; ff = 2d, out hidden = max(d//2, 8) (= shrink.SHead)
+
+
 class Head(nn.Module):
-    def __init__(s, din, d=256, attn=True, p=0.1, other=False):
+    def __init__(s, din, d=None, attn=True, p=0.1, other=False, blocks=None):
+        d = d or ARCH["d"]; blocks = ARCH["blocks"] if blocks is None else blocks; hid = max(d // 2, 8)
         super().__init__(); s.oth = nn.Linear(d, 1) if other else None   # other = distillation-only extra class (EOT STOP analog); absent in the deployed forward
         s.inp = nn.Sequential(nn.Dropout(p), nn.Linear(din, d), nn.GELU()); s.attn = attn
-        s.enc = nn.TransformerEncoder(nn.TransformerEncoderLayer(d, 4, 512, p, batch_first=True, norm_first=True), 2) if attn else \
-            nn.Sequential(*[nn.Sequential(nn.LayerNorm(d), nn.Linear(d, 512), nn.GELU(), nn.Dropout(p), nn.Linear(512, d)) for _ in range(2)])
-        s.out = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, 128), nn.GELU(), nn.Linear(128, 1))
+        s.enc = (nn.TransformerEncoder(nn.TransformerEncoderLayer(d, 4, 2 * d, p, batch_first=True, norm_first=True), blocks, enable_nested_tensor=False) if blocks else nn.Identity()) if attn else             nn.Sequential(*[nn.Sequential(nn.LayerNorm(d), nn.Linear(d, 2 * d), nn.GELU(), nn.Dropout(p), nn.Linear(2 * d, d)) for _ in range(2)])
+        s.out = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, hid), nn.GELU(), nn.Linear(hid, 1))
     def forward(s, T, with_other=False):
         h = s.inp(T); h = s.enc(h) if s.attn else h + s.enc(h); z = s.out(h).squeeze(-1)    # (n, K+1)
         return torch.cat([z, s.oth(h[:, -1])], 1) if with_other else z                     # (n, K+2): last = other
@@ -134,7 +137,8 @@ def sweep(a, parts, S, K, nm, lt_, n_teacher, n_unl, t0):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--no-attn", action="store_true"); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--topk", type=int, default=16)
-    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out"); ap.add_argument("--extra"); ap.add_argument("--nomatch"); ap.add_argument("--tag"); ap.add_argument("--save"); ap.add_argument("--distill"); ap.add_argument("--kl", default="0.5,1,2"); ap.add_argument("--save-distill"); a = ap.parse_args()
+    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out"); ap.add_argument("--extra"); ap.add_argument("--nomatch"); ap.add_argument("--tag"); ap.add_argument("--save"); ap.add_argument("--d", type=int, default=256); ap.add_argument("--blocks", type=int, default=2); ap.add_argument("--distill"); ap.add_argument("--kl", default="0.5,1,2"); ap.add_argument("--save-distill"); a = ap.parse_args()
+    ARCH.update(d=a.d, blocks=a.blocks)
     if a.tag: a.out = a.out or os.path.join(pe.DATA, f"avb-{a.tag}.json")
     assert a.out, "--out or --tag"
     if a.v1: a.topk, a.no_bm25_feats, a.no_refit = 8, True, True

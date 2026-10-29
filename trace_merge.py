@@ -14,7 +14,7 @@ HEAD, CAND, PREV = (os.path.join(D, f) for f in ("avb_head.npz", "avb_head.cand.
 GATE_TOL = 0.005   # candidate must score hit1 >= last accepted - GATE_TOL on the frozen holdout (data/holdout.jsonl, holdout_check.py)
 
 
-def gate(cand, st, apply=True):
+def gate(cand, st, apply=True, src="retrain"):
     """10-28 frozen-holdout gate. Returns (accepted, msg). Hash mismatch = refuse (never score against a changed holdout). Accepted: cand -> data/avb_head.npz (old kept as avb_head.prev.npz) and
     {date, hit1, hit3, acc_with_abstain} appended to st['holdout_hist']; else keep the old weights, log rollback. apply=False scores and decides but touches nothing."""
     import holdout_check as hc
@@ -27,10 +27,28 @@ def gate(cand, st, apply=True):
     if h1 >= last - GATE_TOL:
         if apply:
             if os.path.exists(HEAD): shutil.copyfile(HEAD, PREV)
-            os.replace(cand, HEAD); hist.append({"date": time.strftime("%F"), "hit1": h1, "hit3": round(float(m["hit3"]), 4), "acc_with_abstain": round(float(m["acc_with_abstain"]), 4), "src": "retrain"}); del hist[:-30]
+            os.replace(cand, HEAD); hist.append({"date": time.strftime("%F"), "hit1": h1, "hit3": round(float(m["hit3"]), 4), "acc_with_abstain": round(float(m["acc_with_abstain"]), 4), "src": src}); del hist[:-30]
         return True, f"accept holdout hit1 {h1} >= last accepted {last} - {GATE_TOL}"
     if apply and os.path.exists(cand): os.remove(cand)
     return False, f"rollback holdout hit1 {h1} < last accepted {last} - {GATE_TOL}; kept old weights"
+
+
+def head_arch(path):
+    """(d, blocks) of a head npz, read from the weights (no torch)."""
+    z = np.load(path, allow_pickle=False); bl = [int(k.split(".")[2]) for k in z.files if k.startswith("enc.layers.")]; return int(z["inp.1.weight"].shape[0]), (max(bl) + 1 if bl else 0)
+
+
+def shrink_step(st, extra=PT, tag=None, dry=False):
+    """10-29 optional shrink (--shrink): after an ACCEPTED retrain, train the head one size smaller (d halved, min 8, blocks kept) on the same data and keep it only if the SAME frozen-holdout gate passes.
+    Skipped while st['measurement_window'] is true. Returns a log string. dry=True: print the plan only, train nothing."""
+    if st.get("measurement_window"): return "shrink skipped (measurement_window)"
+    d, bl = head_arch(HEAD); nd = max(8, d // 2)
+    if nd >= d: return f"shrink skipped (d {d} already at min 8)"
+    if dry: return f"shrink plan d{d}b{bl} -> d{nd}b{bl} via avb_rerank --d {nd} --blocks {bl} --save {os.path.basename(CAND)}, then gate()"
+    tag = tag or "trace-shrink-" + time.strftime("%Y%m%d"); out = os.path.join(D, f"avb-{tag}.json")
+    r = subprocess.run([TRAIN_PY, "avb_rerank.py", "--extra", extra, "--tag", tag, "--d", str(nd), "--blocks", str(bl), "--save", CAND], cwd=HERE, creationflags=NOWIN, capture_output=True, text=True, timeout=1500)
+    if r.returncode != 0 or not os.path.exists(CAND): return f"shrink d{d}->d{nd} train FAILED rc {r.returncode}: {(r.stderr or r.stdout)[-200:]}"
+    gok, gmsg = gate(CAND, st, src=f"shrink d{nd}b{bl}"); return f"shrink d{d}->d{nd} " + gmsg
 
 
 def jl(p):
@@ -95,7 +113,9 @@ def low_surprise(hist, retrain_hist, k=7):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--dry-run", action="store_true"); ap.add_argument("--retrain-at", type=int, default=300); ap.add_argument("--force-retrain", action="store_true"); ap.add_argument("--gate-test", metavar="HEAD.npz", help="score this head through the holdout gate against the stored holdout_hist, print the decision, change nothing"); a = ap.parse_args()
+    ap = argparse.ArgumentParser(); ap.add_argument("--dry-run", action="store_true"); ap.add_argument("--retrain-at", type=int, default=300); ap.add_argument("--force-retrain", action="store_true"); ap.add_argument("--shrink", action="store_true", help="after an accepted retrain also try one size smaller (halve d, min 8) through the same gate; off by default; skipped while trace_state measurement_window is true"); ap.add_argument("--shrink-dry", action="store_true", help="print the shrink plan for the current head and exit"); ap.add_argument("--gate-test", metavar="HEAD.npz", help="score this head through the holdout gate against the stored holdout_hist, print the decision, change nothing"); a = ap.parse_args()
+    if a.shrink_dry:
+        st = json.load(open(STATE)) if os.path.exists(STATE) else {}; print(shrink_step(st, dry=True)); return 0
     if a.gate_test:
         st = json.load(open(STATE)) if os.path.exists(STATE) else {}; ok, m = gate(a.gate_test, st, apply=False); print(("ACCEPT " if ok else "REJECT ") + m); return 0 if ok else 4
     if not a.dry_run: subprocess.run(["py", "-3.13", "-I", os.path.join(HERE, "trace_pairs.py")], cwd=HERE, creationflags=NOWIN, capture_output=True, check=True)
@@ -143,6 +163,7 @@ def main():
         if r.returncode == 0 and os.path.exists(CAND):
             gok, gmsg = gate(CAND, st); res += " | gate " + gmsg; st["last_retrain_result"] = res
             if not gok: st["last_rollback"] = {"date": time.strftime("%F %T"), "msg": gmsg}
+            elif a.shrink: res += " | " + shrink_step(st); st["last_retrain_result"] = res
         msg += " | retrain " + res
     st["history"] = (st.get("history", []) + [{"date": time.strftime("%F"), "n_new": len(new), "agreement": ag, "agreement_read": agr, "explore_hit_rate": ehr, "explore_hit": eh, "explore_miss": em, "suspect_hit_rate": shr, "suspect_hit": sh, "suspect_miss": sm, "falsifier_score": fs, "refuted": fr, "with_prediction": fn, "hit1": run_hit1}])[-30:]
     st["low_surprise"] = low_surprise(st["history"], st["retrain_hist"])

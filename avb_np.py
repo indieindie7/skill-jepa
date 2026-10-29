@@ -27,7 +27,7 @@ def load_head(path):
 def forward(W, T, heads=4):
     """T (n, K+1, din) float32 -> logits (n, K+1). Same math as avb_rerank.Head in eval mode."""
     h = gelu(T @ W["inp.1.weight"].T + W["inp.1.bias"]); n, s, d = h.shape; dh = d // heads
-    for i in range(2):
+    for i in range(1 + max([int(k.split(".")[2]) for k in W if k.startswith("enc.layers.")], default=-1)):   # 10-29: block count from the weights (d16b0 = 0 blocks)
         p = f"enc.layers.{i}."; x = ln(h, W[p + "norm1.weight"], W[p + "norm1.bias"])
         qkv = x @ W[p + "self_attn.in_proj_weight"].T + W[p + "self_attn.in_proj_bias"]; q, k, v = (qkv[..., j * d:(j + 1) * d].reshape(n, s, heads, dh).transpose(0, 2, 1, 3) for j in range(3))
         a = q @ k.transpose(0, 1, 3, 2) / math.sqrt(dh); a = np.exp(a - a.max(-1, keepdims=True)); a /= a.sum(-1, keepdims=True)

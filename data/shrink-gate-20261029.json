@@ -1,0 +1,6 @@
+{"date": "2026-10-29", "verdict": "REJECT", "candidate": "d16b0 (37249 params, avb_rerank --d 16 --blocks 0, extra=first 213 pairs_trace rows = production setup, 3 seeds, lowest val CE)",
+ "gate": {"rule": "holdout hit1 >= last accepted - 0.005", "prod_holdout": {"hit1": 0.605, "hit3": 0.77, "acc_with_abstain": 0.74}, "d16b0_holdout": {"hit1": 0.59, "hit3": 0.735, "acc_with_abstain": 0.754}, "decision": "rollback 0.59 < 0.605 - 0.005"},
+ "B1_arms_test_hit1": {"time": {"prod_d256b2": 0.461, "d16b0": 0.501, "A0": 0.35}, "session": {"prod_d256b2": 0.325, "d16b0": 0.297, "A0": 0.238}},
+ "B1_arms_test_acc_with_abstain": {"time": {"prod": 0.677, "d16b0": 0.686}, "session": {"prod": 0.773, "d16b0": 0.773}},
+ "files": ["data/arms-20261029-gate-prod.json", "data/arms-20261029-gate-d16b0.json"], "production_head_changed": false, "opsd_restarted": false,
+ "code": "avb_rerank.py --d/--blocks, avb_np.forward block count from weights, arms.py --d/--blocks, trace_merge.py --shrink/--shrink-dry (off by default)"}
