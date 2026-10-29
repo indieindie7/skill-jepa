@@ -9,7 +9,7 @@ for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"): os.env
 import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__)); D = os.path.join(HERE, "data"); sys.path.insert(0, HERE)
 HOLD, SHA = os.path.join(D, "holdout.jsonl"), os.path.join(D, "holdout.sha256")
-INPUTS = ("pairs.jsonl", "emb.npz", "skills.json")
+INPUTS = ("pairs.jsonl", "emb.npz", "skills.json", "a0_index.json")   # a0_index.json: freeze_index.py snapshot of arms.A0 live inputs (10-29)
 
 
 def sha(path):

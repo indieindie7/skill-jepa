@@ -14,25 +14,36 @@ OPS = os.path.join(os.path.expanduser("~"), "Documents", "Tools", "ops"); sys.pa
 import skilljepa as sj, avb_feats as af, avb_rerank as ar
 import opsd
 opsd.LOG_ROUTES = False
+FROZEN_F = os.path.join(D, "a0_index.json"); FROZEN = os.path.exists(FROZEN_F)   # default ON when the snapshot exists (freeze_index.py); --live turns it off
 K_SHOW, POOL, CLIP, DELTAS, NOMATCH = 3, 8, 3.0, (0.1, 0.3, 1.0), 0.35
 
 
 class A0:
     """treeroute_eval.py root_scores + prev_prior, per pairs row (t = pairs UTC time, uses must be >= 60 s old like avb_feats.lex)."""
-    def __init__(s):
-        s.skills = opsd.load_skills(); s.names = list(s.skills); tok = opsd._tok; s.tf, s.ln = {}, {}
+    def __init__(s, frozen=None):
+        s.frozen = FROZEN if frozen is None else frozen; print("A0 mode:", "FROZEN " + FROZEN_F if s.frozen else "LIVE (opsd + ~/.claude/skills)", flush=True); tok = opsd._tok; s.tf, s.ln = {}, {}
+        if s.frozen:
+            fz = json.load(open(FROZEN_F, encoding="utf-8")); s.skills = fz["skills"]; s.idf = fz["idf"]; bodies = fz["bodies"]; s.names = list(s.skills); urows = fz["usage"]; s.brief_tok = {nm: fz["brief_chars"][nm] / 4 for nm in s.names}
+        else:
+            s.skills = opsd.load_skills(); s.idf = opsd._SK["idf"]; s.names = list(s.skills); bodies = {}
+            for nm in s.names:
+                try: bodies[nm] = open(os.path.join(af.SK, nm, "SKILL.md"), encoding="utf-8", errors="replace").read()
+                except OSError: bodies[nm] = None
+            urows = []
+            for l in open(os.path.join(af.SK, "usage.jsonl"), encoding="utf-8"):
+                try: j = json.loads(l); urows.append({"t": j["t"], "sid": j.get("sid"), "skill": j.get("skill")})
+                except (ValueError, KeyError): continue
+            s.brief_tok = {nm: len(opsd.brief(s.skills[nm])) / 4 for nm in s.names}
         for nm in s.names:
-            try: body = open(os.path.join(af.SK, nm, "SKILL.md"), encoding="utf-8", errors="replace").read()
-            except OSError: body = s.skills[nm].get("description", "")
+            body = bodies.get(nm); body = s.skills[nm].get("description", "") if body is None else body
             c = collections.Counter(tok(body)); s.tf[nm] = c; s.ln[nm] = sum(c.values())
         s.N = len(s.names); s.avg = sum(s.ln.values()) / s.N; s.df = collections.Counter()
         for c in s.tf.values(): s.df.update(c.keys())
         s.use = collections.defaultdict(list)
-        for l in open(os.path.join(af.SK, "usage.jsonl"), encoding="utf-8"):
-            try: j = json.loads(l); t = time.mktime(time.strptime(j["t"], "%Y-%m-%d %H:%M"))
+        for j in urows:
+            try: t = time.mktime(time.strptime(j["t"], "%Y-%m-%d %H:%M"))
             except (ValueError, KeyError): continue
-            if len(j.get("skill", "")) > 2 and j.get("sid"): s.use[j["sid"]].append((t, j["skill"]))
-        s.brief_tok = {nm: len(opsd.brief(s.skills[nm])) / 4 for nm in s.names}
+            if len(j.get("skill") or "") > 2 and j.get("sid"): s.use[j["sid"]].append((t, j["skill"]))
 
     def bm25(s, qt, nm, k1=1.2, b=0.75):
         c = s.tf[nm]; r = 0.0
@@ -42,7 +53,7 @@ class A0:
         return r
 
     def trig(s, q, nm):
-        ql = q.lower(); qw = set(w for w in re.findall(r"[a-z][a-z0-9_.+-]{2,}", ql) if w not in opsd._STOP); sk = s.skills[nm]; tr = sk.get("triggers", {}); idf = opsd._SK["idf"]
+        ql = q.lower(); qw = set(w for w in re.findall(r"[a-z][a-z0-9_.+-]{2,}", ql) if w not in opsd._STOP); sk = s.skills[nm]; tr = sk.get("triggers", {}); idf = s.idf
         hit = sum(wt * idf.get(w, 1.0) for w, wt in tr.items() if (w in qw) or (" " in w and w in ql)); r = hit / ((sum(wt * idf.get(w, 1.0) for w, wt in tr.items()) or 1) ** 0.5)
         if nm.replace("-", " ") in ql or nm in ql or nm.replace("-", "") in ql.replace(" ", ""): r += 1.0
         if any(x in ql for x in sk.get("exclusions", [])): return None
@@ -103,7 +114,10 @@ def combine(a0rows, cands, Z, names, delta):
 def main():
     global POOL
     ap = argparse.ArgumentParser(); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--out", default=os.path.join(D, "arms-20261028.json")); ap.add_argument("--topk", type=int, default=16); ap.add_argument("--pool", type=int, default=POOL, help="A0 candidates reranked by B1/B2 (default 8)")
+    ap.add_argument("--live", action="store_true", help="A0 reads live opsd/SKILL.md instead of data/a0_index.json"); ap.add_argument("--a0-only", action="store_true", help="score A0 only (hit1 time/session), no B1")
     ap.add_argument("--distill", help="teacher_dump.jsonl: adds arm B2 = B1 with the head trained CE + W*KL(teacher) (+ unlabelled route.log rows, KL only)"); ap.add_argument("--kl", type=float, default=1.0); a = ap.parse_args(); POOL = a.pool
+    global FROZEN
+    if a.live: FROZEN = False
     if a.distill and a.out == os.path.join(D, "arms-20261028.json"): a.out = os.path.join(D, "arms-20261028-distill.json")
     t0 = time.time(); X, Y, lab, allp, sid, names, plab = sj.data("prevskill", "all"); n = len(lab); K = a.topk
     pairs = [json.loads(l) for l in open(os.path.join(D, "pairs.jsonl"), encoding="utf-8")]; B, Pr = af.lex(pairs, names)
@@ -132,6 +146,9 @@ def main():
     def R_of(idx, rank=None, top=None):
         rk = rank if rank is not None else [[nm for nm, _ in pool[i][:K_SHOW]] for i in idx]; tp = top if top is not None else np.array([pool[i][0][1] if pool[i] else -9.0 for i in idx])
         return {"top": tp, "rank": rk, "gold": [nm_(allp[i]) for i in idx], "none": lab[idx] < 0}
+    if a.a0_only:
+        for sp, (si, vi, ei, ti) in splits.items(): r0 = fit_arm(R_of(vi), R_of(ei), a0.brief_tok); print("A0ONLY", sp, "mode", "frozen" if a0.frozen else "live", "test", r0["test"], flush=True)
+        return
     def loo(si, k=10):
         Xs, ls = X[si], lab[si]; lt = ls[ls >= 0]; Sm = Xs @ Xs[ls >= 0].T; Sm[np.arange(len(si))[:, None] == np.where(ls >= 0)[0][None]] = -9
         nn_ = np.argsort(-Sm, 1)[:, :k]; E = np.ones((len(si), len(Y)), np.float32)
