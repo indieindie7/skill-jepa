@@ -1,0 +1,60 @@
+{
+ "n_test": 1237,
+ "n_test_labelled": 400,
+ "A0": {
+  "hit1": 0.35,
+  "tokens_top1_brief": 488.2073565076799,
+  "tokens_top3_brief": 1371.715844785772
+ },
+ "T2": {
+  "feasible": true,
+  "best_w(hist3,trans,prev)": [
+   0,
+   0.25,
+   0
+  ],
+  "val_hit1": 0.2962962962962963,
+  "val_hit1_A0": 0.2857142857142857,
+  "test_hit1": 0.3525,
+  "tokens_delta_vs_A0": 0.0,
+  "note": "same pool/briefs as A0 so tokens unchanged; A0 already contains a decayed per-sid prior (mass 1); T2 adds last-3 history + train transition prior"
+ },
+ "T1": {
+  "feasible": true,
+  "gt_rows": 68,
+  "oracle_skill": {
+   "n": 59,
+   "branch_hit1_bm25": 0.4576271186440678,
+   "branch_hit1_prod_brief_order": 0.1694915254237288,
+   "branch_listed_in_prod_brief8": 0.3389830508474576,
+   "branch_hit3_bm25": 0.6440677966101694,
+   "branch_hit1_newest": 0.0847457627118644,
+   "mean_candidates": 108.88135593220339,
+   "tokens_brief_plus_branch": 4593.097457627118,
+   "tokens_full_skillmd": 2929.8813559322034,
+   "tokens_brief_only": 685.021186440678
+  },
+  "after_A0_top1_correct": {
+   "n": 11,
+   "branch_hit1_bm25": 0.45454545454545453,
+   "branch_hit1_prod_brief_order": 0.09090909090909091,
+   "branch_listed_in_prod_brief8": 0.45454545454545453,
+   "branch_hit3_bm25": 0.5454545454545454,
+   "branch_hit1_newest": 0.09090909090909091,
+   "mean_candidates": 182.36363636363637,
+   "tokens_brief_plus_branch": 3240.818181818182,
+   "tokens_full_skillmd": 3915.181818181818,
+   "tokens_brief_only": 727.25
+  },
+  "gt_source": "transcript Read/cat of tree files within 20 min of query, same sid, skill in gold set (usage.jsonl has no file field)"
+ },
+ "T3": {
+  "feasible": true,
+  "tokens_top3_lines": 173.15643648763853,
+  "tokens_brief_top1_A0": 514.8444160272804,
+  "n_routed": 1173,
+  "proxy_ref_hits_opened_branch": 0.5454545454545454,
+  "proxy_n": 11,
+  "note": "opsd.brief(q=...) already embeds lines_text (k=4) in production; T3 = serve ONLY top-3 lines instead of brief. Proxy = a served line ref is in the tree file the chat later opened (only rows with tree-open GT); no proxy for SKILL.md-only answers"
+ }
+}
