@@ -101,8 +101,9 @@ def combine(a0rows, cands, Z, names, delta):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--out", default=os.path.join(D, "arms-20261028.json")); ap.add_argument("--topk", type=int, default=16)
-    ap.add_argument("--distill", help="teacher_dump.jsonl: adds arm B2 = B1 with the head trained CE + W*KL(teacher) (+ unlabelled route.log rows, KL only)"); ap.add_argument("--kl", type=float, default=1.0); a = ap.parse_args()
+    global POOL
+    ap = argparse.ArgumentParser(); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--out", default=os.path.join(D, "arms-20261028.json")); ap.add_argument("--topk", type=int, default=16); ap.add_argument("--pool", type=int, default=POOL, help="A0 candidates reranked by B1/B2 (default 8)")
+    ap.add_argument("--distill", help="teacher_dump.jsonl: adds arm B2 = B1 with the head trained CE + W*KL(teacher) (+ unlabelled route.log rows, KL only)"); ap.add_argument("--kl", type=float, default=1.0); a = ap.parse_args(); POOL = a.pool
     if a.distill and a.out == os.path.join(D, "arms-20261028.json"): a.out = os.path.join(D, "arms-20261028-distill.json")
     t0 = time.time(); X, Y, lab, allp, sid, names, plab = sj.data("prevskill", "all"); n = len(lab); K = a.topk
     pairs = [json.loads(l) for l in open(os.path.join(D, "pairs.jsonl"), encoding="utf-8")]; B, Pr = af.lex(pairs, names)
