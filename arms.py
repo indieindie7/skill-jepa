@@ -101,7 +101,9 @@ def combine(a0rows, cands, Z, names, delta):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--out", default=os.path.join(D, "arms-20261028.json")); ap.add_argument("--topk", type=int, default=16); a = ap.parse_args()
+    ap = argparse.ArgumentParser(); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--out", default=os.path.join(D, "arms-20261028.json")); ap.add_argument("--topk", type=int, default=16)
+    ap.add_argument("--distill", help="teacher_dump.jsonl: adds arm B2 = B1 with the head trained CE + W*KL(teacher) (+ unlabelled route.log rows, KL only)"); ap.add_argument("--kl", type=float, default=1.0); a = ap.parse_args()
+    if a.distill and a.out == os.path.join(D, "arms-20261028.json"): a.out = os.path.join(D, "arms-20261028-distill.json")
     t0 = time.time(); X, Y, lab, allp, sid, names, plab = sj.data("prevskill", "all"); n = len(lab); K = a.topk
     pairs = [json.loads(l) for l in open(os.path.join(D, "pairs.jsonl"), encoding="utf-8")]; B, Pr = af.lex(pairs, names)
     pos, cnt = np.zeros(n), {}
@@ -112,6 +114,16 @@ def main():
     tr_t, sub = pos < 0.7 * tot, pos < 0.49 * tot
     splits = {"time": (np.where(sub)[0], np.where(tr_t & ~sub)[0], np.where(~tr_t)[0], np.where(tr_t)[0]),   # head-train, val, test, test-knn pool
               "session": (np.where(tr_s)[0], np.where(va_s)[0], np.where(te_s)[0], np.where(~te_s)[0])}
+    unl = np.zeros(n, bool); TQ0 = None
+    if a.distill:   # teacher rows for pairs prompts + unlabelled route.log prompts appended to the pool arrays (rows >= n are train-only, never val/test)
+        TV, unl_rows = ar.teacher_load(a.distill, names); TQ0 = np.full((n, len(names) + 1), np.nan, np.float32)
+        for j in range(n):
+            v = TV.get(ar.nzq(pairs[j]["q"]))
+            if v is not None: TQ0[j] = v
+        held_all = {ar.nzq(pairs[j]["q"]) for sp_ in splits.values() for j in np.r_[sp_[1], sp_[2]]}
+        ux, ukeep = ar.load_unl(unl_rows, names, Y, held_all, os.path.join(D, "emb_teacher_unl.npz")); m_ = len(ukeep); en = np.arange(n, n + m_)
+        X, lab, plab, B, Pr = np.vstack([X, ux["X"]]), np.r_[lab, ux["lab"]], np.r_[plab, ux["plab"]], np.vstack([B, ux["B"]]), np.vstack([Pr, ux["Pr"]]); allp, allp_prev = allp + ux["allp"], allp_prev + ux["allp_prev"]
+        unl = np.r_[unl, np.ones(m_, bool)]; TQ0 = np.vstack([TQ0, np.stack([TV[ar.nzq(r["q"])] for r in ukeep])]) if m_ else TQ0; print("distill: teacher rows", len(TV), "unlabelled kept", m_, flush=True)
     a0 = A0(); need = sorted(set(np.r_[splits["time"][1], splits["time"][2], splits["session"][1], splits["session"][2]].tolist())); pool = {}
     for i in need: pool[i] = a0.score(pairs[i])
     print("A0 scored", len(pool), "rows", round(time.time() - t0), "s", flush=True)
@@ -124,33 +136,45 @@ def main():
         nn_ = np.argsort(-Sm, 1)[:, :k]; E = np.ones((len(si), len(Y)), np.float32)
         for r in range(len(si)): np.add.at(E[r], lt[nn_[r]], -Sm[r, nn_[r]] / k)
         return E
-    def part(i, E, shuf=None, fit=False):
+    def part(i, E, shuf=None, fit=False, TQs=None):
         cs = af.cands(E, B[i], K, True)
         if shuf: [shuf.shuffle(c) for c in cs]
         y, out = af.target(lab[i], [allp[j] for j in i], cs, False); T = af.feats(X[i], Y, E, B[i], Pr[i], cs, plab[i], [allp_prev[j] for j in i], True); k = (y >= 0) if fit else np.ones(len(y), bool)
-        return {"T": T[k], "y": y[k], "lab": lab[i], "cands": cs, "allp": [allp[j] for j in i], "n": len(i)}
-    res = {"meta": {"K_show": K_SHOW, "pool": POOL, "clip": CLIP, "deltas": DELTAS, "head_K": K, "seeds": a.seeds, "nomatch_prod_thr": NOMATCH, "date": time.strftime("%F %T"),
+        P = {"lab": lab[i], "cands": cs, "allp": [allp[j] for j in i], "n": len(i)}
+        if TQs is not None:   # B2 train part: unlabelled rows y = -2 (KL only); tq/tm = teacher over [cands, none, other]
+            y = np.where(unl[i], -2, y); k = (y >= 0) | (y == -2); P["tq"], P["tm"] = (z[k] for z in ar.tq_for(cs, TQs[i]))
+        return {"T": T[k], "y": y[k]} | P
+    res = {"meta": {"K_show": K_SHOW, "pool": POOL, "clip": CLIP, "deltas": DELTAS, "head_K": K, "seeds": a.seeds, "distill_W": a.kl if a.distill else None, "nomatch_prod_thr": NOMATCH, "date": time.strftime("%F %T"),
                     "A1": "online, see trace_state (explore_hit_rate / suspect_hit_rate in data/trace_state.json history)"}}
     for sp, (si, vi, ei, ti) in splits.items():
         tokf = a0.brief_tok; print(sp, "train", len(si), "val", len(vi), "test", len(ei), "labelled test", int((lab[ei] >= 0).sum()), flush=True)
         Rv0, Rt0 = R_of(vi), R_of(ei); r0 = fit_arm(Rv0, Rt0, tokf); r0["test_at_prod_thr"] = metrics(Rt0, NOMATCH, tokf)
         pv = [pool[i][:POOL] for i in vi]; pt = [pool[i][:POOL] for i in ei]; r0["recall_pool_test"] = round(float(np.mean([bool(nm_(allp[i]) & {nm for nm, _ in p}) for i, p in zip(ei, pt) if lab[i] >= 0])), 3)
         parts = {"train": part(si, loo(si), random.Random(3), True), "val": part(vi, sj.knn_energies(X[si], lab[si], X[vi], len(Y))), "test": part(ei, sj.knn_energies(X[ti], lab[ti], X[ei], len(Y)))}
-        runs = []
-        for sd in range(a.seeds):
-            ms, r = ar.run(sd, parts, True, refit=False); m = ms[0]
-            with torch.no_grad(): Zv, Zt = (m(torch.tensor(parts[k]["T"])).numpy()[:, :-1] for k in ("val", "test"))
-            per = {}
-            for dl in DELTAS:
-                rkv, tpv, cv = combine(pv, parts["val"]["cands"], Zv, names, dl); rkt, tpt, ct = combine(pt, parts["test"]["cands"], Zt, names, dl)
-                Rv = R_of(vi, rkv, tpv); Rt = R_of(ei, rkt, tpt); f = fit_arm(Rv, Rt, tokf); f["coverage_test"] = round(ct, 3); per[dl] = f
-            best = max(DELTAS, key=lambda dl: (per[dl]["val"]["hit1"] + per[dl]["val"]["acc_with_abstain"], -dl)); runs.append({"seed": sd, "delta": best, "val_ce": r["val_ce"], "chosen": per[best], "all_deltas": {str(k): v for k, v in per.items()}})
-            print(sp, "seed", sd, "delta", best, per[best]["test"], flush=True)
-        keys = runs[0]["chosen"]["test"].keys(); agg = {k: [round(float(np.mean([r["chosen"]["test"][k] for r in runs])), 3), round(float(np.std([r["chosen"]["test"][k] for r in runs])), 3)] for k in keys}
+        def arm(prts, kl, tag):
+            runs = []
+            for sd in range(a.seeds):
+                ms, r = ar.run(sd, prts, True, refit=False, kl=kl); m = ms[0]
+                with torch.no_grad(): Zv, Zt = (m(torch.tensor(prts[k]["T"])).numpy()[:, :-1] for k in ("val", "test"))
+                per = {}
+                for dl in DELTAS:
+                    rkv, tpv, cv = combine(pv, prts["val"]["cands"], Zv, names, dl); rkt, tpt, ct = combine(pt, prts["test"]["cands"], Zt, names, dl)
+                    Rv = R_of(vi, rkv, tpv); Rt = R_of(ei, rkt, tpt); f = fit_arm(Rv, Rt, tokf); f["coverage_test"] = round(ct, 3); per[dl] = f
+                best = max(DELTAS, key=lambda dl: (per[dl]["val"]["hit1"] + per[dl]["val"]["acc_with_abstain"], -dl)); runs.append({"seed": sd, "delta": best, "val_ce": r["val_ce"], "chosen": per[best], "all_deltas": {str(k): v for k, v in per.items()}})
+                print(sp, tag, "seed", sd, "delta", best, per[best]["test"], flush=True)
+            keys = runs[0]["chosen"]["test"].keys(); return {k: [round(float(np.mean([r["chosen"]["test"][k] for r in runs])), 3), round(float(np.std([r["chosen"]["test"][k] for r in runs])), 3)] for k in keys}, runs
+        agg, runs = arm(parts, 0.0, "B1")
         res[sp] = {"n": {"train_head": len(si), "val": len(vi), "test": len(ei), "test_labelled": int((lab[ei] >= 0).sum()), "test_none": int((lab[ei] < 0).sum())}, "A0": r0, "B1": agg, "B1_runs": runs, "A1": "online"}
+        if a.distill:   # B2 = same head/deltas/pool, head trained CE + W*KL(teacher) on TRAIN rows + unlabelled rows; teacher rows whose text is a val/test prompt of THIS split are masked
+            hs = {ar.nzq(pairs[j]["q"]) for j in np.r_[vi, ei]}; TQs = TQ0.copy()
+            for j in range(n):
+                if ar.nzq(pairs[j]["q"]) in hs: TQs[j] = np.nan
+            si2 = np.r_[si, np.arange(n, len(lab))]; pd_ = dict(parts); pd_["train"] = part(si2, loo(si2), random.Random(3), True, TQs)
+            res[sp]["B2"], res[sp]["B2_runs"] = arm(pd_, a.kl, "B2"); res[sp]["B2_info"] = {"W": a.kl, "train_rows": int(len(pd_["train"]["y"])), "train_rows_teacher": int(pd_["train"]["tm"].sum()), "teacher_file": a.distill}
     json.dump(res, open(a.out, "w", encoding="utf-8"), indent=1); print("secs", round(time.time() - t0))
     for sp in splits:
         print(sp, "A0", res[sp]["A0"]["test"]); print(sp, "B1", {k: v[0] for k, v in res[sp]["B1"].items()})
+        if a.distill: print(sp, "B2", {k: v[0] for k, v in res[sp]["B2"].items()}, res[sp]["B2_info"])
 
 
 if __name__ == "__main__":

@@ -10,39 +10,83 @@ import policy_eval as pe, skilljepa as sj, avb_feats as af
 
 
 class Head(nn.Module):
-    def __init__(s, din, d=256, attn=True, p=0.1):
-        super().__init__(); s.inp = nn.Sequential(nn.Dropout(p), nn.Linear(din, d), nn.GELU()); s.attn = attn
+    def __init__(s, din, d=256, attn=True, p=0.1, other=False):
+        super().__init__(); s.oth = nn.Linear(d, 1) if other else None   # other = distillation-only extra class (EOT STOP analog); absent in the deployed forward
+        s.inp = nn.Sequential(nn.Dropout(p), nn.Linear(din, d), nn.GELU()); s.attn = attn
         s.enc = nn.TransformerEncoder(nn.TransformerEncoderLayer(d, 4, 512, p, batch_first=True, norm_first=True), 2) if attn else \
             nn.Sequential(*[nn.Sequential(nn.LayerNorm(d), nn.Linear(d, 512), nn.GELU(), nn.Dropout(p), nn.Linear(512, d)) for _ in range(2)])
         s.out = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, 128), nn.GELU(), nn.Linear(128, 1))
-    def forward(s, T):
-        h = s.inp(T); h = s.enc(h) if s.attn else h + s.enc(h); return s.out(h).squeeze(-1)    # (n, K+1)
+    def forward(s, T, with_other=False):
+        h = s.inp(T); h = s.enc(h) if s.attn else h + s.enc(h); z = s.out(h).squeeze(-1)    # (n, K+1)
+        return torch.cat([z, s.oth(h[:, -1])], 1) if with_other else z                     # (n, K+2): last = other
 
 
-def epoch(m, opt, X, y):
+def epoch(m, opt, X, y, tq=None, tm=None, W=0.0):
+    """CE(gold) on rows with y >= 0 (+ W * KL(teacher || student) over K cands + none + other on rows with tm; y == -2 rows = unlabelled, KL only)."""
     m.train(); perm = torch.randperm(len(X))
     for b in range(0, len(perm), 64):
-        i = perm[b:b + 64]; loss = F.cross_entropy(m(X[i]), y[i]); opt.zero_grad(); loss.backward(); opt.step()
+        i = perm[b:b + 64]
+        if tq is None: loss = F.cross_entropy(m(X[i]), y[i])
+        else:
+            z = m(X[i], with_other=True); yi, ok = y[i], y[i] >= 0; loss = F.cross_entropy(z[ok], yi[ok]) if ok.any() else z.sum() * 0
+            mi = tm[i]
+            if W > 0 and mi.any(): lp = F.log_softmax(z[mi], 1); t = tq[i][mi]; loss = loss + W * (t * (torch.log(t.clamp_min(1e-9)) - lp)).sum(1).mean()
+        opt.zero_grad(); loss.backward(); opt.step()
 
 
-def run(seed, parts, attn, ep=60, pat=8, refit=True):
+def run(seed, parts, attn, ep=60, pat=8, refit=True, kl=0.0):
     """val-fit head (early stop on VAL CE, thr on VAL) and, if refit, a fresh head trained on parts['refit'] for the chosen epoch count; both scored on test with the same thr."""
-    tr, va = parts["train"], parts["val"]; din = tr["T"].shape[2]; mk = lambda: Head(din, attn=attn)
+    tr, va = parts["train"], parts["val"]; din = tr["T"].shape[2]; mk = lambda: Head(din, attn=attn, other=kl > 0)
+    tt = lambda P: (torch.tensor(P["tq"]), torch.tensor(P["tm"])) if kl > 0 else (None, None); tqt, tmt = tt(tr)
     torch.manual_seed(seed); np.random.seed(seed); m = mk(); opt = torch.optim.AdamW(m.parameters(), 1e-3, weight_decay=1e-2)
     Xt, yt, Xv, yv = torch.tensor(tr["T"]), torch.tensor(tr["y"]), torch.tensor(va["T"]), torch.tensor(va["y"]); ok = yv >= 0; best = (9e9, None, 0)
     for e in range(ep):
-        epoch(m, opt, Xt, yt); m.eval()
+        epoch(m, opt, Xt, yt, tqt, tmt, kl); m.eval()
         with torch.no_grad(): vl = F.cross_entropy(m(Xv)[ok], yv[ok]).item()
         if vl < best[0]: best = (vl, {k: v.clone() for k, v in m.state_dict().items()}, e)
         elif e - best[2] >= pat: break
     m.load_state_dict(best[1]); m.eval(); sc = lambda mm, P: mm(torch.tensor(P["T"])).detach().numpy()
-    thr = af.tune_thr(sc(m, va), va); r = {"thr_val": round(thr, 4), "epochs": best[2] + 1, "val_ce": round(best[0], 4)}; Zt = sc(m, parts["test"])
+    Zv_ = sc(m, va); thr = af.tune_thr(Zv_, va); r = {"thr_val": round(thr, 4), "epochs": best[2] + 1, "val_ce": round(best[0], 4), "val_thr": af.metrics(Zv_, va, thr)}; Zt = sc(m, parts["test"])
     r["argmax"], r["thr"] = af.metrics(Zt, parts["test"]), af.metrics(Zt, parts["test"], thr); ms = [m]
     if refit:
-        torch.manual_seed(seed); m2 = mk(); opt = torch.optim.AdamW(m2.parameters(), 1e-3, weight_decay=1e-2); rf = parts["refit"]; Xr, yr = torch.tensor(rf["T"]), torch.tensor(rf["y"])
-        for e in range(best[2] + 1): epoch(m2, opt, Xr, yr)
+        torch.manual_seed(seed); m2 = mk(); opt = torch.optim.AdamW(m2.parameters(), 1e-3, weight_decay=1e-2); rf = parts["refit"]; Xr, yr = torch.tensor(rf["T"]), torch.tensor(rf["y"]); tqr, tmr = tt(rf)
+        for e in range(best[2] + 1): epoch(m2, opt, Xr, yr, tqr, tmr, kl)
         m2.eval(); Z2 = sc(m2, parts["test"]); r["refit_argmax"], r["refit_thr"] = af.metrics(Z2, parts["test"]), af.metrics(Z2, parts["test"], thr); ms.append(m2)
     return ms, r
+
+NONE_I = 77
+
+
+def nzq(t):
+    return " ".join(t.lower().split())
+
+
+def teacher_load(path, names):
+    """data/teacher_dump.jsonl -> ({nz(q): (len(names)+1,) float32 teacher probs, last = none}, unlabelled rows [{q, ...}]). Failed rows skipped."""
+    ix = {n: i for i, n in enumerate(names)}; V, unl = {}, []
+    for l in open(path, encoding="utf-8"):
+        r = json.loads(l)
+        if r.get("fail") or "dist" not in r: continue
+        v = np.full(len(names) + 1, r["rest"], np.float32)
+        for k, p in r["dist"].items(): v[len(names) if k == "none" else ix[k]] = p
+        V[nzq(r["q"])] = v / v.sum()
+        if r["label"] is None: unl.append(r)
+    return V, unl
+
+
+def tq_for(cs, TV):
+    """cs candidate lists (n, K), TV (n, nS+1) teacher rows (nan = none) -> tq (n, K+2) float32 = [teacher p of each candidate, none, mass outside the candidates = other], tm bool (has teacher)."""
+    tm = ~np.isnan(TV[:, 0]); c = np.array(cs); TVf = np.where(tm[:, None], TV, 0.0); pc = np.take_along_axis(TVf, c, 1); pn = TVf[:, -1:]; po = np.clip(1 - pc.sum(1, keepdims=True) - pn, 0, 1)
+    tq = np.concatenate([pc, pn, po], 1); tq /= np.maximum(tq.sum(1, keepdims=True), 1e-9); return tq.astype(np.float32), tm
+
+
+def load_unl(rows, names, Y, drop_q, cache):
+    """unlabelled dump rows (route.log prompts, label None) -> extra pool rows like load_nomatch (lab -1, no ctx, unique sid) + teacher vecs; text equal to a val/test prompt (drop_q) dropped."""
+    keep = [r for r in rows if nzq(r["q"]) not in drop_q]; qs = [r["q"] for r in keep]
+    if os.path.exists(cache) and list(np.load(cache, allow_pickle=True)["q"]) == qs: X0 = np.load(cache, allow_pickle=True)["X"]
+    else: X0 = sj.embed([sj.Q_PRE + q for q in qs]); np.savez(cache, X=X0, q=np.array(qs, dtype=object))
+    prs = [{"q": r["q"], "t": "2026-10-27T00:00:00Z", "sid": f"unl{i}"} for i, r in enumerate(keep)]; m = len(prs); lab = np.full(m, -1); prv = np.full(m, -1); plab = np.full(m, -1); B, Pr = af.lex(prs, names)
+    return {"X": sj.with_ctx(X0, Y, prv, plab, "prevskill"), "lab": lab, "allp": [set() for _ in prs], "sid": np.array([p["sid"] for p in prs]), "plab": plab, "B": B, "Pr": Pr, "allp_prev": [set() for _ in prs]}, keep
 
 
 def load_extra(path, names, Y):
@@ -68,9 +112,29 @@ def load_nomatch(path, names, Y, drop_q):
             "allp_prev": [set() for _ in rows]}, len(raw) - len(keep)
 
 
+def sweep(a, parts, S, K, nm, lt_, n_teacher, n_unl, t0):
+    """--distill: W in {0 (control: CE only on labelled/none rows) + --kl list}; W picked on VAL only (mean over seeds of val hit1 + val acc_with_abstain at the val-tuned thr); best head saved (lowest val CE of the best W)."""
+    Ws = [0.0] + [float(x) for x in a.kl.split(",")]; tr0 = parts["train"]; k0 = tr0["y"] >= 0; p0 = dict(parts); p0["train"] = {"T": tr0["T"][k0], "y": tr0["y"][k0]}; R, MS = {}, {}
+    for W in Ws:
+        rs, mss = [], []
+        for sd in range(a.seeds): m, r = run(sd, parts if W > 0 else p0, True, refit=False, kl=W); rs.append(r); mss.append(m[0]); print(nm, "W", W, "seed", sd, r["val_thr"], r["thr"], "ep", r["epochs"], flush=True)
+        ag = lambda k, q: [round(float(np.mean([r[k][q] for r in rs])), 3), round(float(np.std([r[k][q] for r in rs])), 3)]
+        R[str(W)] = {"val_score": round(float(np.mean([r["val_thr"]["hit1"] + r["val_thr"]["acc_with_abstain"] for r in rs])), 4), "val_ce": round(float(np.mean([r["val_ce"] for r in rs])), 4),
+                     "val_thr": {q: ag("val_thr", q) for q in rs[0]["val_thr"]}, "test_thr": {q: ag("thr", q) for q in rs[0]["thr"]}, "test_argmax": {q: ag("argmax", q) for q in rs[0]["argmax"]}, "runs": rs}; MS[W] = mss
+    best = max(Ws[1:], key=lambda W: R[str(W)]["val_score"]); rs = R[str(best)]["runs"]; b = min(range(len(rs)), key=lambda i: rs[i]["val_ce"]); m = MS[best][b]
+    st = {k: v for k, v in m.state_dict().items() if not k.startswith("oth.")}   # deployed forward has no `other` logit
+    torch.save({"state": m.state_dict(), "W": best, "K": K, "din": parts["train"]["T"].shape[2], "seed": b, "thr": rs[b]["thr_val"]}, a.save_distill or os.path.join(pe.DATA, "avb_head_distill.pt"))
+    import avb_np; avb_np.save_head((a.save_distill or os.path.join(pe.DATA, "avb_head_distill.pt")).replace(".pt", ".npz"), st, {"thr": rs[b]["thr_val"], "K": K, "din": int(parts["train"]["T"].shape[2]), "seed": b, "val_ce": rs[b]["val_ce"], "epochs": rs[b]["epochs"], "W": best, "teacher": a.distill, "created": time.strftime("%F %T"), "src": a.out})
+    out = json.load(open(a.out, encoding="utf-8")) if os.path.exists(a.out) else {}
+    out.update({"distill": {"best_W": best, "W": R, "teacher_rows": n_teacher, "unlabelled_kept": n_unl, "seeds": a.seeds, "K": K, "train_rows": int(len(parts["train"]["y"])), "train_rows_teacher": int(parts["train"]["tm"].sum()),
+                "n_test": len(lt_), "secs": round(time.time() - t0, 1)}})
+    json.dump(out, open(a.out, "w", encoding="utf-8"), indent=1)
+    print(json.dumps({"best_W": best} | {w: {k: v for k, v in r.items() if k != "runs"} for w, r in R.items()}, indent=1))
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--no-attn", action="store_true"); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--topk", type=int, default=16)
-    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out"); ap.add_argument("--extra"); ap.add_argument("--nomatch"); ap.add_argument("--tag"); ap.add_argument("--save"); a = ap.parse_args()
+    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out"); ap.add_argument("--extra"); ap.add_argument("--nomatch"); ap.add_argument("--tag"); ap.add_argument("--save"); ap.add_argument("--distill"); ap.add_argument("--kl", default="0.5,1,2"); ap.add_argument("--save-distill"); a = ap.parse_args()
     if a.tag: a.out = a.out or os.path.join(pe.DATA, f"avb-{a.tag}.json")
     assert a.out, "--out or --tag"
     if a.v1: a.topk, a.no_bm25_feats, a.no_refit = 8, True, True
@@ -84,14 +148,22 @@ def main():
         cs = af.cands(E, B[i], K, union)
         if shuf: [shuf.shuffle(c) for c in cs]
         y, out = af.target(lab[i], [allp[j] for j in i], cs, drop); T = af.feats(X[i], Y, E, B[i], Pr[i], cs, plab[i], [allp_prev[j] for j in i], lexf); k = (y >= 0) if fit else np.ones(len(y), bool)
-        rec = float(np.mean([bool(set(c) & allp[j]) for c, j in zip(cs, i) if lab[j] >= 0]))
-        return {"T": T[k], "y": y[k], "lab": lab[i], "cands": cs, "allp": [allp[j] for j in i], "out": out, "n": len(i), "recall": rec}
+        rec = float(np.mean([bool(set(c) & allp[j]) for c, j in zip(cs, i) if lab[j] >= 0])); P = {"lab": lab[i], "cands": cs, "allp": [allp[j] for j in i], "out": out, "n": len(i), "recall": rec}
+        if a.distill and fit:   # unlabelled rows (no gold): y = -2, KL only; every fit row carries its teacher row (tm False = no teacher for it)
+            y = np.where(unl[i], -2, y); k = (y >= 0) | (y == -2); P["tq"], P["tm"] = (z[k] for z in tq_for(cs, TQ[i]))
+        return {"T": T[k], "y": y[k]} | P
     def loo(si, k=10):   # head TRAIN rows: leave-one-out knn within si (self never a neighbour)
         Xs, ls = X[si], lab[si]; lt = ls[ls >= 0]; Sm = Xs @ Xs[ls >= 0].T; Sm[np.arange(len(si))[:, None] == np.where(ls >= 0)[0][None]] = -9
         nn_ = np.argsort(-Sm, 1)[:, :k]; E = np.ones((len(si), len(Y)), np.float32)
         for r in range(len(si)): np.add.at(E[r], lt[nn_[r]], -Sm[r, nn_[r]] / k)
         return E
     si, ti = np.where(sub)[0], np.where(tr)[0]; vi, ei = S["val"]["idx"], S["test"]["idx"]
+    unl, TQ = np.zeros(n, bool), np.full((n, len(names) + 1), np.nan, np.float32)
+    if a.distill:   # teacher rows of pairs prompts whose text is NOT a val/test prompt of this split (leak guard) + unlabelled route.log prompts (KL only)
+        TV, unl_rows = teacher_load(a.distill, names); held = {nzq(pairs[j]["q"]) for j in np.r_[vi, ei]}
+        for j in range(n):
+            v = TV.get(nzq(pairs[j]["q"]))
+            if v is not None and nzq(pairs[j]["q"]) not in held: TQ[j] = v
     parts = {"val": part(vi, sj.knn_energies(X[sub], lab[sub], X[vi], len(Y))), "test": part(ei, sj.knn_energies(X[tr], lab[tr], X[ei], len(Y)))}
     ex = load_extra(a.extra, names, Y) if a.extra and os.path.getsize(a.extra) else None   # extra rows join the head TRAIN/REFIT pools only (val/test knn pools unchanged)
     nmd = None
@@ -101,10 +173,16 @@ def main():
     if ex:
         m_ = len(ex["lab"]); en = np.arange(n, n + m_); si, ti = np.r_[si, en], np.r_[ti, en]; X, lab, plab, B, Pr = np.vstack([X, ex["X"]]), np.r_[lab, ex["lab"]], np.r_[plab, ex["plab"]], np.vstack([B, ex["B"]]), np.vstack([Pr, ex["Pr"]])
         allp, allp_prev = allp + ex["allp"], allp_prev + ex["allp_prev"]
+    if a.distill:
+        ux, ukeep = load_unl(unl_rows, names, Y, held, os.path.join(pe.DATA, "emb_teacher_unl.npz")); m_ = len(ukeep); en = np.arange(len(lab), len(lab) + m_); si, ti = np.r_[si, en], np.r_[ti, en]
+        X, lab, plab, B, Pr = np.vstack([X, ux["X"]]), np.r_[lab, ux["lab"]], np.r_[plab, ux["plab"]], np.vstack([B, ux["B"]]), np.vstack([Pr, ux["Pr"]]); allp, allp_prev = allp + ux["allp"], allp_prev + ux["allp_prev"]
+        unl = np.r_[unl, np.ones(m_, bool)]; TQ = np.vstack([TQ, np.stack([TV[nzq(r["q"])] for r in ukeep])]) if m_ else TQ; print("distill: teacher rows", len(TV), "unlabelled kept", m_, "train rows with teacher", int((~np.isnan(TQ[si, 0])).sum()), flush=True)
     parts["train"] = part(si, loo(si), random.Random(3), True)
     if not a.no_refit: parts["refit"] = part(ti, loo(ti), random.Random(4), True)
     parts = {k: parts[k] for k in ("train", "val", "test", "refit") if k in parts}
     lt_ = S["test"]["lab"]; res, ms = [], []
+    if a.distill:
+        sweep(a, parts, S, K, nm, lt_, len(TV), len(ukeep), t0); return
     for sd in range(a.seeds): m, r = run(sd, parts, not a.no_attn, refit=not a.no_refit); res.append(r); ms.append(m); print(nm, sd, r, flush=True)
     agg = lambda k: {q: [round(float(np.mean([r[k][q] for r in res])), 3), round(float(np.std([r[k][q] for r in res])), 3)] for q in res[0][k]}
     out = json.load(open(a.out, encoding="utf-8")) if os.path.exists(a.out) else {}
