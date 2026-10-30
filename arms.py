@@ -115,7 +115,7 @@ def main():
     global POOL
     ap = argparse.ArgumentParser(); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--out", default=os.path.join(D, "arms-20261028.json")); ap.add_argument("--topk", type=int, default=16); ap.add_argument("--pool", type=int, default=POOL, help="A0 candidates reranked by B1/B2 (default 8)")
     ap.add_argument("--live", action="store_true", help="A0 reads live opsd/SKILL.md instead of data/a0_index.json"); ap.add_argument("--a0-only", action="store_true", help="score A0 only (hit1 time/session), no B1")
-    ap.add_argument("--distill", help="teacher_dump.jsonl: adds arm B2 = B1 with the head trained CE + W*KL(teacher) (+ unlabelled route.log rows, KL only)"); ap.add_argument("--kl", type=float, default=1.0); ap.add_argument("--d", type=int, default=256); ap.add_argument("--blocks", type=int, default=2, help="B1 head arch (avb_rerank.ARCH), default = production"); a = ap.parse_args(); POOL = a.pool; ar.ARCH.update(d=a.d, blocks=a.blocks)
+    ap.add_argument("--distill", help="teacher_dump.jsonl: adds arm B2 = B1 with the head trained CE + W*KL(teacher) (+ unlabelled route.log rows, KL only)"); ap.add_argument("--kl", type=float, default=1.0); ap.add_argument("--d", type=int, default=256); ap.add_argument("--blocks", type=int, default=2, help="B1 head arch (avb_rerank.ARCH), default = production"); ap.add_argument("--mixer", choices=["attn", "grassmann"], default="attn"); ap.add_argument("--epochs", type=int, default=60); a = ap.parse_args(); POOL = a.pool; ar.ARCH.update(d=a.d, blocks=a.blocks, mixer=a.mixer, ep=a.epochs)
     global FROZEN
     if a.live: FROZEN = False
     if a.distill and a.out == os.path.join(D, "arms-20261028.json"): a.out = os.path.join(D, "arms-20261028-distill.json")

@@ -9,18 +9,55 @@ import numpy as np, torch, torch.nn as nn, torch.nn.functional as F
 import policy_eval as pe, skilljepa as sj, avb_feats as af
 
 
-ARCH = {"d": 256, "blocks": 2}   # 10-29 --d/--blocks (shrink step): defaults = production head; ff = 2d, out hidden = max(d//2, 8) (= shrink.SHead)
+ARCH = {"d": 256, "blocks": 2, "mixer": "attn", "lexf": True}   # 10-29 --d/--blocks (shrink step): defaults = production head; ff = 2d, out hidden = max(d//2, 8) (= shrink.SHead)
+
+
+class GrassmannBlock(nn.Module):
+    """10-30 A15 (arxiv 2512.19428, causal fix): LN -> Linear d->r -> for k in OFFS pair token i with i-k (zero/masked if i<k; lower index = higher rank) -> Pluecker coords p_ab = u_a v_b - u_b v_a (a<b, r(r-1)/2)
+    -> L2 normalise -> mean over valid offsets -> Linear -> d, sigmoid gate from token, residual add."""
+    OFFS = (1, 2, 4, 8, 12, 16)
+    def __init__(s, d, r=32, p=0.1):
+        super().__init__(); s.r = r; s.ln = nn.LayerNorm(d); s.down = nn.Linear(d, r); s.proj = nn.Linear(r * (r - 1) // 2, d); s.gate = nn.Linear(d, d); s.drop = nn.Dropout(p)
+        iu = torch.triu_indices(r, r, 1); s.register_buffer("ia", iu[0], persistent=False); s.register_buffer("ib", iu[1], persistent=False)
+    def forward(s, x):
+        L = x.shape[1]; hn = s.ln(x); u = s.down(hn); acc = torch.zeros(x.shape[0], L, s.proj.in_features, device=x.device, dtype=x.dtype); cnt = torch.zeros(1, L, 1, device=x.device, dtype=x.dtype)
+        for k in s.OFFS:
+            if k >= L: continue
+            v = torch.zeros_like(u); v[:, k:] = u[:, :L - k]; m = torch.zeros(1, L, 1, device=x.device, dtype=x.dtype); m[:, k:] = 1
+            p = u[..., s.ia] * v[..., s.ib] - u[..., s.ib] * v[..., s.ia]; p = F.normalize(p, dim=-1) * m; acc = acc + p; cnt = cnt + m
+        g = acc / cnt.clamp_min(1)
+        return x + torch.sigmoid(s.gate(hn)) * s.drop(s.proj(g))
+
+
+class GrassmannEnc(nn.Module):
+    """blocks x GrassmannBlock over [candidates sorted by an A0-rank proxy ..., none token last]. Proxy key (T scalars, higher-ranked = smaller): knn rank + log BM25 global rank - prior (A0 = trigger + 0.1 BM25 + prev-skill prior;
+    the trigger score is not a head feature). Tokens are shuffled in training, so the sort is what makes 'i-k' mean 'higher-ranked'. Without lex feats: knn rank only."""
+    def __init__(s, d, blocks, p=0.1):
+        super().__init__(); s.blocks = nn.ModuleList([GrassmannBlock(d, 32, p) for _ in range(blocks)])
+    def forward(s, h, T):
+        K = h.shape[1] - 1
+        key = T[:, :K, -10] + T[:, :K, -4] - T[:, :K, -1] if ARCH["lexf"] else T[:, :K, -4]
+        perm = key.argsort(dim=1, stable=True); idx = perm[..., None].expand(-1, -1, h.shape[2]); hs = torch.cat([h[:, :K].gather(1, idx), h[:, K:]], 1)
+        for b in s.blocks: hs = b(hs)
+        out = torch.zeros_like(hs[:, :K]).scatter(1, idx, hs[:, :K]); return torch.cat([out, hs[:, K:]], 1)
+
+
+def match_d(din, target=None, **kw):
+    """grassmann d (multiple of 4) whose Head param count is closest to the production attn d256b2 head."""
+    tgt = target or sum(p.numel() for p in Head(din, 256, mixer="attn", **kw).parameters())
+    return min(range(16, 512, 4), key=lambda d: abs(sum(p.numel() for p in Head(din, d, mixer="grassmann", **kw).parameters()) - tgt)), tgt
 
 
 class Head(nn.Module):
-    def __init__(s, din, d=None, attn=True, p=0.1, other=False, blocks=None):
-        d = d or ARCH["d"]; blocks = ARCH["blocks"] if blocks is None else blocks; hid = max(d // 2, 8)
+    def __init__(s, din, d=None, attn=True, p=0.1, other=False, blocks=None, mixer=None):
+        d = d or ARCH["d"]; blocks = ARCH["blocks"] if blocks is None else blocks; s_mix = mixer or ARCH["mixer"]; hid = max(d // 2, 8)
         super().__init__(); s.oth = nn.Linear(d, 1) if other else None   # other = distillation-only extra class (EOT STOP analog); absent in the deployed forward
         s.inp = nn.Sequential(nn.Dropout(p), nn.Linear(din, d), nn.GELU()); s.attn = attn
-        s.enc = (nn.TransformerEncoder(nn.TransformerEncoderLayer(d, 4, 2 * d, p, batch_first=True, norm_first=True), blocks, enable_nested_tensor=False) if blocks else nn.Identity()) if attn else             nn.Sequential(*[nn.Sequential(nn.LayerNorm(d), nn.Linear(d, 2 * d), nn.GELU(), nn.Dropout(p), nn.Linear(2 * d, d)) for _ in range(2)])
+        s.grass = attn and s_mix == "grassmann" and bool(blocks)
+        s.enc = GrassmannEnc(d, blocks, p) if s.grass else (nn.TransformerEncoder(nn.TransformerEncoderLayer(d, 4, 2 * d, p, batch_first=True, norm_first=True), blocks, enable_nested_tensor=False) if blocks else nn.Identity()) if attn else             nn.Sequential(*[nn.Sequential(nn.LayerNorm(d), nn.Linear(d, 2 * d), nn.GELU(), nn.Dropout(p), nn.Linear(2 * d, d)) for _ in range(2)])
         s.out = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, hid), nn.GELU(), nn.Linear(hid, 1))
     def forward(s, T, with_other=False):
-        h = s.inp(T); h = s.enc(h) if s.attn else h + s.enc(h); z = s.out(h).squeeze(-1)    # (n, K+1)
+        h = s.inp(T); h = (s.enc(h, T) if s.grass else s.enc(h)) if s.attn else h + s.enc(h); z = s.out(h).squeeze(-1)    # (n, K+1)
         return torch.cat([z, s.oth(h[:, -1])], 1) if with_other else z                     # (n, K+2): last = other
 
 
@@ -37,9 +74,9 @@ def epoch(m, opt, X, y, tq=None, tm=None, W=0.0):
         opt.zero_grad(); loss.backward(); opt.step()
 
 
-def run(seed, parts, attn, ep=60, pat=8, refit=True, kl=0.0):
+def run(seed, parts, attn, ep=None, pat=8, refit=True, kl=0.0):
     """val-fit head (early stop on VAL CE, thr on VAL) and, if refit, a fresh head trained on parts['refit'] for the chosen epoch count; both scored on test with the same thr."""
-    tr, va = parts["train"], parts["val"]; din = tr["T"].shape[2]; mk = lambda: Head(din, attn=attn, other=kl > 0)
+    ep = ep or ARCH.get("ep", 60); tr, va = parts["train"], parts["val"]; din = tr["T"].shape[2]; mk = lambda: Head(din, attn=attn, other=kl > 0)
     tt = lambda P: (torch.tensor(P["tq"]), torch.tensor(P["tm"])) if kl > 0 else (None, None); tqt, tmt = tt(tr)
     torch.manual_seed(seed); np.random.seed(seed); m = mk(); opt = torch.optim.AdamW(m.parameters(), 1e-3, weight_decay=1e-2)
     Xt, yt, Xv, yv = torch.tensor(tr["T"]), torch.tensor(tr["y"]), torch.tensor(va["T"]), torch.tensor(va["y"]); ok = yv >= 0; best = (9e9, None, 0)
@@ -137,8 +174,8 @@ def sweep(a, parts, S, K, nm, lt_, n_teacher, n_unl, t0):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--no-attn", action="store_true"); ap.add_argument("--seeds", type=int, default=3); ap.add_argument("--topk", type=int, default=16)
-    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out"); ap.add_argument("--extra"); ap.add_argument("--nomatch"); ap.add_argument("--tag"); ap.add_argument("--save"); ap.add_argument("--d", type=int, default=256); ap.add_argument("--blocks", type=int, default=2); ap.add_argument("--distill"); ap.add_argument("--kl", default="0.5,1,2"); ap.add_argument("--save-distill"); a = ap.parse_args()
-    ARCH.update(d=a.d, blocks=a.blocks)
+    ap.add_argument("--no-bm25-feats", action="store_true"); ap.add_argument("--v1", action="store_true"); ap.add_argument("--no-refit", action="store_true"); ap.add_argument("--name", default="avb2"); ap.add_argument("--out"); ap.add_argument("--extra"); ap.add_argument("--nomatch"); ap.add_argument("--tag"); ap.add_argument("--save"); ap.add_argument("--d", type=int, default=256); ap.add_argument("--blocks", type=int, default=2); ap.add_argument("--mixer", choices=["attn", "grassmann"], default="attn"); ap.add_argument("--epochs", type=int, default=60); ap.add_argument("--distill"); ap.add_argument("--kl", default="0.5,1,2"); ap.add_argument("--save-distill"); a = ap.parse_args()
+    ARCH.update(d=a.d, blocks=a.blocks, mixer=a.mixer, ep=a.epochs, lexf=not (a.no_bm25_feats or a.v1))
     if a.tag: a.out = a.out or os.path.join(pe.DATA, f"avb-{a.tag}.json")
     assert a.out, "--out or --tag"
     if a.v1: a.topk, a.no_bm25_feats, a.no_refit = 8, True, True
