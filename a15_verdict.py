@@ -6,12 +6,12 @@ Accept iff grassmann holdout hit1 >= .600 AND grassmann session B1 hit1 >= .325 
 Writes data/a15-grassmann-<date>.json and llm/autorun/logs/idea<ID>.verdict.json."""
 import argparse, json, os, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__)); D = os.path.join(HERE, "data"); sys.path.insert(0, HERE)
-PY = "C:/llm/qlora/venv/Scripts/python.exe"; VERDICT_DIR = "C:/Users/john/Documents/Tools/llm/autorun/logs"; IDEA = 0; NX = 213; HOLD_MIN, SESS_MIN = 0.600, 0.325
+PY = "C:/llm/qlora/venv/Scripts/python.exe"; VERDICT_DIR = "C:/Users/john/Documents/Tools/llm/autorun/logs"; IDEA = 131; NX = 213; HOLD_MIN, SESS_MIN = 0.600, 0.325
 NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def sh(args, tag):
-    t = time.time(); r = subprocess.run([PY] + args, cwd=HERE, creationflags=NOWIN, capture_output=True, text=True)
+    t = time.time(); r = subprocess.run([PY] + args, cwd=HERE, creationflags=NOWIN, capture_output=True, text=True, env={**os.environ, "CUDA_VISIBLE_DEVICES": "1"})  # gpu1 only: never gpu0 (user games on it)
     open(os.path.join(D, f"a15-{tag}.log"), "w", encoding="utf-8").write((r.stdout or "") + "\n" + (r.stderr or "")); print(tag, "rc", r.returncode, round(time.time() - t), "s", flush=True)
     if r.returncode: raise SystemExit(f"{tag} failed rc {r.returncode}: {(r.stderr or r.stdout)[-400:]}")
 
