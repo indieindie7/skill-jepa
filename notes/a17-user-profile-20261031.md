@@ -1,4 +1,5 @@
 # A17 per-user latent profile ("subtext") vs per-user transition table - preregistered 2026-10-31
+Note: ledger number clash with peer chat a17_svts.py (SVTS proxy); this file = "A17u" (user-profile). Commit 148d892.
 ## Index
 1. Question + flip assumption - L6-9
 2. Protocol (data, split, arms, metrics) - L11-24
@@ -50,3 +51,36 @@ Per-session warm hit1 seed 0 (T0/T1/T1perm/T2/T3/T4): 586de7b7 28/52/50/54/37/53
 - T3 is the only arm that improves acc_abst over T0 (69.0 vs 68.0) with the lowest false routes (0.9 %): the latent residual is a safe but weak personal correction.
 - Per-session: T3 ties/beats T1 only on ab4031b2, 948cc452, 36aff851, f3249b13; loses hard on 586de7b7 (37 vs 52) and a4c10a49.
 - Conclusion for the falsification plan's flip branch: on this data a per-chat frequency/transition table is the cheaper personalised router; JEPA latent profile does not earn the slot. Next candidates (not run): T3 with per-session residual fitted as a low-rank map instead of a mean shift; fusion with rank-based (not log-prob) prior so tau survives; per-session table as the production "ctx" feature.
+
+## 5. Follow-ups (preregistered 2026-10-31, a17u_followups.py)
+Same protocol/data/seeds as section 2. New arms:
+  T2d decoupled fusion: ranking = T0 energy - w*log p_table (w=0.3), abstention = T0 rule (emin0 > tau0). Tests whether fusion hit1 survives once tau is not retuned on a shifted scale.
+  T2r rank fusion: E0 + w*rank_table(skill)/K (w=0.3, rank 0 = most likely), tau retuned on train rows with the global table.
+  T3k kernel residual: delta_i = sum_j softmax(pred_i.pred_j / 0.1) * (Y[lab_j] - pred_j) over the session's past labelled rows, shrink m/(m+5); prompt-conditional personal correction ("subtext given what is asked").
+  T3lr low-rank ridge residual: W = ridge(preds_past -> residuals_past, lambda=1.0) in the top-8 PCA dims of past preds (refit each step, fallback to mean shift when m < 8); delta_i = W applied to pred_i.
+  T5 = T3k ranking + table log prior (w=0.3), T0 abstention.
+Verdict rules: a latent arm (T3k/T3lr/T5) SUPPORTED iff warm hit1 >= T1 + 2.0 AND all-rows acc_abst >= T0. A fusion arm (T2d/T2r) counts as "fusion fixed" iff warm hit1 >= T1 + 2.0 AND false_route_none <= T1 + 2.0 pts. Otherwise table stands.
+
+### Follow-up run 2026-10-31 14:13 (seeds=3, w=0.3, temp=0.1, rank=8)
+
+| arm | cold hit1 | warm hit1 | all acc_abst | all false_route_none |
+|---|---|---|---|---|
+| T0 | 23.0 +- 1.4 | 32.9 +- 1.3 | 68.0 +- 0.2 | 4.9 +- 0.2 |
+| T1 | 57.8 +- 0.0 | 56.8 +- 0.0 | 70.8 +- 0.0 | 6.0 +- 0.0 |
+| T2d | 58.1 +- 0.5 | 60.3 +- 0.4 | 68.0 +- 0.2 | 4.9 +- 0.2 |
+| T2r | 24.8 +- 2.6 | 34.3 +- 1.4 | 67.9 +- 0.4 | 5.3 +- 0.2 |
+| T3 | 42.2 +- 0.9 | 51.8 +- 1.2 | 69.0 +- 0.3 | 0.9 +- 0.2 |
+| T3k | 54.4 +- 0.9 | 63.0 +- 0.5 | 70.2 +- 0.1 | 1.7 +- 0.1 |
+| T3lr | 46.3 +- 0.5 | 60.3 +- 0.7 | 69.0 +- 0.1 | 1.8 +- 0.0 |
+| T5 | 59.3 +- 1.0 | 62.8 +- 0.1 | 68.2 +- 0.2 | 4.9 +- 0.2 |
+
+Verdict: T3k SUPPORTED (latent beats table); T3lr SUPPORTED (latent beats table); T5 SUPPORTED (latent beats table); T2d FUSION FIXED
+
+Per-session warm hit1 seed 0 (T0/T1/T2d/T2r/T3/T3k/T3lr/T5): 586de7b7 28/52/54/29/37/46/50/54, ab4031b2 32/67/68/36/67/67/72/69, 948cc452 56/58/67/57/63/67/69/70, d4e4ed81 49/67/72/52/62/72/69/70, ce153384 20/50/37/20/30/43/40/50, f3249b13 21/31/41/17/41/48/45/38, 36aff851 19/50/62/23/62/69/65/65, 8d3c6b2d 50/68/77/50/68/77/73/82, a4c10a49 36/68/64/36/50/73/68/68
+
+### Reading (follow-ups, 2026-10-31)
+- First verdict reversed: the per-session latent residual beats the table once it is PROMPT-CONDITIONAL. T3k kernel residual warm hit1 63.0 vs table T1 56.8 (+6.2), acc_abst 70.2 (best of all arms, T0 68.0), false routes 1.7 %; no table used at all. T3lr low-rank 60.3 (+3.5). T5 (T3k + table log prior, T0 abstention) 62.8, no gain over T3k alone. Mean shift T3 (51.8) was the wrong functional form, not a wrong hypothesis.
+- Fusion fixed: T2d (rank by fused energy, abstain by T0 tau) keeps 60.3 hit1 with T0's 4.9 % false routes; retuning tau on the shifted scale was the bug. Rank prior T2r (34.3) is too weak at w=0.3.
+- Cold bucket: T3k 54.4 < T1 57.8 (table wins the first 10 labelled rows; the kernel needs neighbours), both far above T0 23.0. Per-session T3k loses to T1 only on 586de7b7 (46 vs 52) and ce153384 (43 vs 50).
+- Caveat: T3k residuals are built from the session's own labels, so part of its gain is still the session frequency prior (T1perm showed ~20 pts of that). Open test: T3k fed a label-permuted history (kernel over shuffled residuals) to split prompt-conditional subtext from frequency.
+- Flip-branch verdict now: JEPA latent earns the personalised-local-correction slot as a kernel residual over past (pred, label) pairs; production candidate = T3k with T1 for the cold bucket.
