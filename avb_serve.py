@@ -14,6 +14,21 @@ LOG = os.path.join(D, "avb_serve.log")
 RETRY = 300.0   # s between load / outage retries
 
 
+FU = re.compile(r"^\W*(ok|okay|yes|yep|sure|go|go on|continue|proceed|do it|do them all|please do them all|all|next|thanks|thx|y)\W*$", re.I)  # = a14_abstain.FU
+
+
+def gate_feats(q, z, zn):
+    """10-31 route.log col 9 'gf=' (shadow, A14 LR abstain gate inputs; SELFIMPROVE_PLAN sec 9): head-side + query-shape features
+    as a14_abstain.feats (htop, hmarg, hent over clipped cand logits, znone, log1p chars/words, url, '?', symbol frac, follow-up).
+    A0/BM25/c1/qemb/prev features are recomputed offline from q + sid; the gate is fit offline on these logged rows. Never changes routing."""
+    try:
+        zc = np.clip(np.asarray(z, np.float64), -3.0, 3.0); zs = np.sort(zc)[::-1]; ex = np.exp(zc - zc.max()); pr = ex / ex.sum()
+        f = [zs[0], zs[0] - (zs[1] if len(zs) > 1 else 0.0), -(pr * np.log(pr + 1e-9)).sum(), zn, np.log1p(len(q)), np.log1p(len(q.split())),
+             float("http" in q or "youtu" in q), float("?" in q), sum(q.count(ch) for ch in "{}[]();=<>_\\/") / max(len(q), 1), float(bool(FU.match(q)) or len(q.split()) <= 3)]
+        return "gf=" + ",".join(f"{v:.3f}" for v in f)
+    except Exception: return "gf="
+
+
 class AvbServe:
     def __init__(self, head=None):
         self.head = head or os.path.join(D, "avb_head.npz"); self.ok = False; self.next_try = 0.0; self.lock = threading.Lock(); self.last = {}; self.use = {"mt": -1, "rows": []}; self.warned = 0.0
@@ -100,5 +115,5 @@ class AvbServe:
                     if now - self.warned > RETRY: self.warned = now; self._log(f"avb scoring failed ({type(e).__name__}: {e}); col 8 empty")
                     return ""
                 d = dict(zip(c, z))
-                return "avb=" + ",".join([f"{s}:{d[s]:.2f}" if s in d else f"{s}:nan" for s in skills] + [f"_none:{zn:.2f}"])
+                return "avb=" + ",".join([f"{s}:{d[s]:.2f}" if s in d else f"{s}:nan" for s in skills] + [f"_none:{zn:.2f}"]) + chr(9) + gate_feats(q, z, zn)
         except Exception: return ""
