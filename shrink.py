@@ -45,7 +45,7 @@ def setup(a):
         cs = af.cands(E, B[i], K, True)
         if shuf: [shuf.shuffle(c) for c in cs]
         y, out = af.target(lab[i], [allp[j] for j in i], cs, False); T = af.feats(X[i], Y, E, B[i], Pr[i], cs, plab[i], [allp_prev[j] for j in i], True); k = (y >= 0) if fit else np.ones(len(y), bool)
-        return {"T": T[k], "y": y[k], "lab": lab[i], "cands": cs, "allp": [allp[j] for j in i], "n": len(i)}
+        return {"T": T[k], "y": y[k], "lab": lab[i], "cands": cs, "allp": [allp[j] for j in i], "n": len(i), "idx": i[k], "k": k}
     S = {}
     for sp, (si, vi, ei, ti) in splits.items():
         parts = {"train": part(si, loo(si), random.Random(3), True), "val": part(vi, sj.knn_energies(X[si], lab[si], X[vi], len(Y))), "test": part(ei, sj.knn_energies(X[ti], lab[ti], X[ei], len(Y)))}
