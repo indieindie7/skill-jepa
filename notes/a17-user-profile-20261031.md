@@ -84,3 +84,30 @@ Per-session warm hit1 seed 0 (T0/T1/T2d/T2r/T3/T3k/T3lr/T5): 586de7b7 28/52/54/2
 - Cold bucket: T3k 54.4 < T1 57.8 (table wins the first 10 labelled rows; the kernel needs neighbours), both far above T0 23.0. Per-session T3k loses to T1 only on 586de7b7 (46 vs 52) and ce153384 (43 vs 50).
 - Caveat: T3k residuals are built from the session's own labels, so part of its gain is still the session frequency prior (T1perm showed ~20 pts of that). Open test: T3k fed a label-permuted history (kernel over shuffled residuals) to split prompt-conditional subtext from frequency.
 - Flip-branch verdict now: JEPA latent earns the personalised-local-correction slot as a kernel residual over past (pred, label) pairs; production candidate = T3k with T1 for the cold bucket.
+
+## 6. Permuted-history control for T3k (preregistered 2026-10-31, a17u_followups.py --perm)
+Question: is T3k's gain prompt-conditional subtext or the session frequency prior in disguise? Control = same kernel, same past preds, but residuals built from LABEL-PERMUTED history (labels shuffled among the session's labelled rows, rng seed+1000; keeps per-session class frequency, destroys the (pred, label) pairing). Arms added: T3perm (mean shift on permuted residuals), T3kperm (kernel on permuted residuals). Rule: SUBTEXT iff warm hit1 T3k - T3kperm >= 2.0 (mean over 3 seeds); FREQUENCY iff within 2.0 (the kernel only re-learns which skills this chat uses); report T3perm vs T3 the same way.
+
+### Follow-up run 2026-10-31 14:35 (seeds=3, w=0.3, temp=0.1, rank=8)
+
+| arm | cold hit1 | warm hit1 | all acc_abst | all false_route_none |
+|---|---|---|---|---|
+| T0 | 23.0 +- 1.4 | 32.9 +- 1.3 | 68.0 +- 0.2 | 4.9 +- 0.2 |
+| T1 | 57.8 +- 0.0 | 56.8 +- 0.0 | 70.8 +- 0.0 | 6.0 +- 0.0 |
+| T2d | 58.1 +- 0.5 | 60.3 +- 0.4 | 68.0 +- 0.2 | 4.9 +- 0.2 |
+| T2r | 24.8 +- 2.6 | 34.3 +- 1.4 | 67.9 +- 0.4 | 5.3 +- 0.2 |
+| T3 | 42.2 +- 0.9 | 51.8 +- 1.2 | 69.0 +- 0.3 | 0.9 +- 0.2 |
+| T3k | 54.4 +- 0.9 | 63.0 +- 0.5 | 70.2 +- 0.1 | 1.7 +- 0.1 |
+| T3lr | 46.3 +- 0.5 | 60.3 +- 0.7 | 69.0 +- 0.1 | 1.8 +- 0.0 |
+| T5 | 59.3 +- 1.0 | 62.8 +- 0.1 | 68.2 +- 0.2 | 4.9 +- 0.2 |
+| T3perm | 32.2 +- 1.8 | 47.7 +- 1.5 | 69.2 +- 0.1 | 1.0 +- 0.2 |
+| T3kperm | 34.8 +- 1.0 | 46.5 +- 1.9 | 68.1 +- 0.2 | 0.6 +- 0.3 |
+
+Verdict: T3k SUPPORTED (latent beats table); T3lr SUPPORTED (latent beats table); T5 SUPPORTED (latent beats table); T2d FUSION FIXED; SUBTEXT: T3k - T3kperm = +16.5 warm hit1 (T3 - T3perm = +4.1)
+
+Per-session warm hit1 seed 0 (T0/T1/T2d/T2r/T3/T3k/T3lr/T5/T3perm/T3kperm): 586de7b7 28/52/54/29/37/46/50/54/33/33, ab4031b2 32/67/68/36/67/67/72/69/51/61, 948cc452 56/58/67/57/63/67/69/70/57/46, d4e4ed81 49/67/72/52/62/72/69/70/52/48, ce153384 20/50/37/20/30/43/40/50/40/47, f3249b13 21/31/41/17/41/48/45/38/34/31, 36aff851 19/50/62/23/62/69/65/65/62/50, 8d3c6b2d 50/68/77/50/68/77/73/82/64/64, a4c10a49 36/68/64/36/50/73/68/68/55/59
+
+### Reading (permuted-history control, 2026-10-31)
+- SUBTEXT by the preregistered rule: T3k 63.0 vs T3kperm 46.5 warm hit1 (+16.5, 3 seeds); permuting the session's labels drops the kernel residual below the mean shift and 10 pts below the table (56.8). The (pred, label) pairing carries the gain, not the per-session class frequency. Mean shift keeps only +4.1 over its permuted twin (51.8 vs 47.7): the mean shift was mostly frequency, the kernel is mostly subtext.
+- Per-session: T3kperm beats T3k only on ce153384 (47 vs 43, 40 labelled rows); everywhere else the pairing wins by 6-27 pts.
+- Standing verdict for the flip branch: a prompt-conditional per-session latent residual (T3k) is a real personalised correction beyond frequency/transition tables. Cold bucket (first 10 labelled rows) still belongs to the table. Production shape: T1 cold -> T3k warm, T0 abstention; next = C4-style ids-stripped check on new sessions is already implicit (leave-one-session-out), remaining risk is the single-user data.

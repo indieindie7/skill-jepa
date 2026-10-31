@@ -6,7 +6,7 @@ HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import skilljepa as sj
 from a17_user_profile import norm, allp_sub, table_probs
 
-ARMS = ["T0", "T1", "T2d", "T2r", "T3", "T3k", "T3lr", "T5"]
+ARMS = ["T0", "T1", "T2d", "T2r", "T3", "T3k", "T3lr", "T5", "T3perm", "T3kperm"]
 
 def ridge_lowrank(Pp, Rr, x, r=8, lam=1.0):
     """fit W in top-r PCA dims of past preds Pp (m,d) -> residuals Rr (m,d); return delta for x (d,)."""
@@ -35,24 +35,27 @@ def main():
             tau_r = sj.tune_tau(Etr + a.w * rk_tr, lab[tr], allp_sub(allp, tr))
             pred, _ = P.fwd(X[te]); E0 = 1 - pred @ Y.T
             ts = np.zeros((K + 1, K + 1)); cs = np.zeros(K + 1); prev_c = K; nl = 0; rows = {ar: [] for ar in ARMS}
-            Pp, Rr = [], []
+            rng = np.random.default_rng(seed + 1000); li = [j for j, i in enumerate(te) if lab[i] >= 0]; pl = np.array([lab[te[j]] for j in li]); rng.shuffle(pl); permlab = {j: int(l) for j, l in zip(li, pl)}
+            Pp, Rr, Rp = [], [], []
             for j, i in enumerate(te):
                 L = bool(lab[i] >= 0); bucket = "cold" if nl < a.cold else "warm"; m = len(Pp); sc = m / (m + 5.0)
                 pt = table_probs(prev_c, ts, cs, Tg, pg); lp = a.w * np.log(pt[:K] + 1e-9); rk = np.argsort(np.argsort(-pt[:K])) / K
                 if m:
-                    PP = np.stack(Pp); RR = np.stack(Rr); dmean = RR.mean(0)
-                    wk = np.exp((PP @ pred[j] - (PP @ pred[j]).max()) / a.temp); wk /= wk.sum(); dk = wk @ RR
+                    PP = np.stack(Pp); RR = np.stack(Rr); dmean = RR.mean(0); RRp = np.stack(Rp); dmp = RRp.mean(0)
+                    wk = np.exp((PP @ pred[j] - (PP @ pred[j]).max()) / a.temp); wk /= wk.sum(); dk = wk @ RR; dkp = wk @ RRp
                     dlr = ridge_lowrank(PP, RR, pred[j], a.rank) if m >= a.rank else dmean
-                else: dmean = dk = dlr = np.zeros(Y.shape[1])
+                else: dmean = dk = dlr = dmp = dkp = np.zeros(Y.shape[1])
                 E3 = 1 - norm(pred[j] + sc * dmean) @ Y.T; E3k = 1 - norm(pred[j] + sc * dk) @ Y.T; E3lr = 1 - norm(pred[j] + sc * dlr) @ Y.T
+                E3p = 1 - norm(pred[j] + sc * dmp) @ Y.T; E3kp = 1 - norm(pred[j] + sc * dkp) @ Y.T
                 ab0 = bool(E0[j].min() > tau0)
                 outs = {"T0": (int(E0[j].argmin()), ab0), "T1": (int(pt[:K].argmax()), bool(pt.argmax() == K)),
                         "T2d": (int((E0[j] - lp).argmin()), ab0), "T2r": (int((E0[j] + a.w * rk).argmin()), bool((E0[j] + a.w * rk).min() > tau_r)),
                         "T3": (int(E3.argmin()), bool(E3.min() > tau0)), "T3k": (int(E3k.argmin()), bool(E3k.min() > tau0)),
-                        "T3lr": (int(E3lr.argmin()), bool(E3lr.min() > tau0)), "T5": (int((E3k - lp).argmin()), ab0)}
+                        "T3lr": (int(E3lr.argmin()), bool(E3lr.min() > tau0)), "T5": (int((E3k - lp).argmin()), ab0),
+                        "T3perm": (int(E3p.argmin()), bool(E3p.min() > tau0)), "T3kperm": (int(E3kp.argmin()), bool(E3kp.min() > tau0))}
                 for ar, (top, ab) in outs.items(): rows[ar].append((bucket, L, (top in allp[i]) if L else None, ab))
                 c = cls[i]; ts[prev_c, c] += 1; cs[c] += 1; prev_c = c
-                if L: Pp.append(pred[j]); Rr.append(Y[lab[i]] - pred[j]); nl += 1
+                if L: Pp.append(pred[j]); Rr.append(Y[lab[i]] - pred[j]); Rp.append(Y[permlab[j]] - pred[j]); nl += 1
             rec = {"seed": seed, "sid": s, "n": len(te), "labelled": int(nl)}
             for ar in ARMS:
                 for b in ("cold", "warm", "all"):
@@ -69,6 +72,7 @@ def main():
     verdict = [f"{ar} SUPPORTED (latent beats table)" for ar in ("T3k", "T3lr", "T5") if w[ar] >= w["T1"] + 2.0 and acc[ar] >= acc["T0"]]
     verdict += [f"{ar} FUSION FIXED" for ar in ("T2d", "T2r") if w[ar] >= w["T1"] + 2.0 and fr[ar] <= fr["T1"] + 2.0]
     verdict = verdict or ["TABLE STANDS: no follow-up arm meets its rule"]
+    d = w["T3k"] - w["T3kperm"]; verdict.append(("SUBTEXT" if d >= 2.0 else "FREQUENCY") + f": T3k - T3kperm = {d:+.1f} warm hit1 (T3 - T3perm = {w['T3'] - w['T3perm']:+.1f})")
     json.dump({"args": vars(a), "summary": summ, "per": per, "verdict": verdict}, open(a.out, "w", encoding="utf-8"), indent=1, default=float)
     f = lambda ar, b, k: "%.1f +- %.1f" % (summ[ar][b][k][0] * 100, summ[ar][b][k][1] * 100)
     lines = ["", f"### Follow-up run {time.strftime('%Y-%m-%d %H:%M')} (seeds={a.seeds}, w={a.w}, temp={a.temp}, rank={a.rank})", "",
