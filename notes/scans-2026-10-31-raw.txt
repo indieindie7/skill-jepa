@@ -1,0 +1,152 @@
+### IMG_20261031_0002.pdf (r180)
+h,
+JEPA-Skills: Compact Synthesis +
+Falsification Plan
+Known
+• [SRCI Recovered public-JEPA discussion: the examined router was prompt
+frozen embedding model
+residual predictor
+predicted skill
+Supervision came
+representation
+cosine-energy ranking
+skill/abstain .
+from skills subsequently touched in historical agent transcripts. Roughly 79% of
+prompts had no skill label. Performance improved strongly on prompts from
+seen chats but showed almost no improvement when entire sessions were held
+1
+out.
+• [SRCI Architectural update: JEPA should model a state transition, not merely
+skill :
+prompt
+current prompt
+4
+active goal
+previous skill
+graph position
+unresolved state
+latest observation
+next required skill / skill-set
+It remains a bounded routing correction; exact matching, safeguards,
+1
+provenance, dependencies, and no-match behavior stay explicit.
+• [SRCI Outcome labels must distinguish skill selected, skill used, tool success,
+task success, user correction, and whether the route caused success. Historical
+12
+transcript appearance alone is insufficient supervision.
+• [SRC—user + recovered prior chat] Prior motivating result: the BM25
+implementation was rejected for now because it reduced the aggregate score
+relative to base-only JEPA. Abstention became the active frontier.
+• **[SRCI Existing Plans require grouped session/project/time evaluation; if
+random-split gains vanish there, deployment should be rejected as fingerprint
+learning. Latency, false activation, resource use, and instruction survival must
+2
+be bounded before inspecting test results.
+### IMG_20261031_0003.pdf (r180)
+Confirmed nodes
+JEPA va lue hypothesís
+1— state-aware latent routing
+E— historical usage correction
+1— possible route-quality / latency advantage
+Authority boundary
+E— JEPA proposes or reranks
+E— explicit gate routes / abstains
+verified observation updates durable state
+Missing
+• [a] Exact prior benchmark formula. I recovered that BM25 lowered the
+combined score, but not:
+o the exact definition or weighting of route score;
+o the exact definition of speed score;
+o whether speed measured routing-only, end-to-end latency, throughput, or a
+normalized composite;
+o candidate cardinality, hardware, warm-up, cache state, or number of
+repetitions;
+o confidence intervals or per-family results.
+• Exact BM25 variant. It is unclear whether BM25:
+1. restricted the candidate set before JEPA;
+2. contributed a fusion score;
+3. replaced base cosine retrieval;
+4. incurred only additional runtime without changing reachable skills.
+• [al Causal evidence: no retrieved trace yet proves
+-v procedure followed
+task
+relevant sections injected
+correct route
+3
+succeeded .
+• [al Numeric decision margins. Retrieved Plans require preregistration but do
+2
+not provide defensible universal thresholds.
+### IMG_20261031_0004.pdf (r180)
+Conflicts
+1. Old design vs newer result. Earlier Plans treated lexical/BM25 routing as the
+control baseline and JEPA as a small residual correction. - The newer
+recovered result says the implemented BM25 branch lost to base-only JEPA.
+Resolution: keep BM25 as a benchmark arm, not an architectural obligation.
+2. Seen-session strength vs transferable routing. Strong seen-chat improvement
+is consistent with useful contextual prediction or session/project fingerprinting.
+Held-out-session weakness supports the latter as a serious competing
+1
+explanation.
+3. Speed claim vs implementation effect. A faster JEPA arm may reflect
+precomputed embeddings, fewer candidates, cache warmth, or implementation
+language—not a better predictive architecture.
+4. Usage correctness. A skill touched in a transcript may be unnecessary,
+incorrectly selected, or merely available; optimizing that label can reproduce
+historical behavior rather than improve routing.
+Compact synthesis
+[SYNI Defensible JEPA-skills thesis:
+A small latent predictor rnay identifi the next useful capabilityfrom bounded task
+state more efficiently than lexical retrieval—but it earns architectural status only
+ifit beats simpler semantic, symbolic, and cached baselines on held-out route
+quality while remaining inside afixed latency/resource envelope.
+typed task state Et
+simple semantic/base router
+h— state-aware JEPA router
+symbolic/exact trigger router
+1— optional candidate-generation variants
+route I abstain I ambiguous
+### IMG_20261031_0005.pdf (r180)
+Conflicts
+1. Old design vs newer result. Earlier Plans treated lexical/BM25 routing as the
+control baseline and JEPA as a small residual correction. The newer
+recovered result says the implemented BM25 branch lost to base-only JEPA.
+Resolution: keep BM25 as a benchmark arm, not an architectural obligation.
+2. Seen-session strength vs transferable routing. Strong seen-chat improvement
+is consistent with useful contextual prediction or session/project fingerprinting.
+Held-out-session weakness supports the latter as a serious competing
+1
+explanation.
+3. Speed claim vs implementation effect. A faster JEPA arm may reflect
+precomputed embeddings, fewer candidates, cache warmth, or implementation
+language—not a better predictive architecture.
+4. Usage correctness. A skill touched in a transcript may be unnecessary,
+incorrectly selected, or merely available; optimizing that label can reproduce
+historical behavior rather than improve routing.
+Compact synthesis
+[SYNI Defensible JEPA-skills thesis:
+A small latent predictor may identifi the next useful capability from bounded task
+state more efficiently than lexical retrieval—but it earns architectural status only
+ifit beats simpler semantic, syrnbolic, and cached baselines on held-out route
+quality while remaining inside afixed latency/resource envelope.
+typed task state Et
+simple semantic/base router
+state-aware JEPA router
+1— symbolic/exact trigger router
+optional candidate -generation variants
+route I abstain I ambiguous
+### IMG_20261031_0006.pdf (r180)
+route
+bounded skill/context load
+injection use tool outcome trace
+The important update is therefore not "add BM25 in front of JEPA." It is:
+Base-only JEPA is now the empirical control arm.
+Every added mechanism must win against it.
+The benchmark should separate:
+• routing value — correct skill, skill-set, or abstention;
+• runtime value — latency, throughput, memory;
+• downstream value — whether the route changed task success;
+• generalization value — whether gains survive unseen contexts.
+32
+The falsification structure is illustrated below.
+### phone photos (uploads 6db1f042, WinRT OCR, noisy)
