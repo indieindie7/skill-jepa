@@ -1,0 +1,21 @@
+# qstd replay on real histories (2026-11-02)
+Tool: `qstd.py replay REPO` (first-parent, oldest first). Metrics per SlopCodeBench (video-notes tree/442): erosion = share of fn weight (CC*sqrt(LOC)) in fns CC>10; dup = share of normalized lines inside a 6-line window seen >= 2x; crossed = fns that went from CC<=10 (or absent) to CC>10. Gate line: rise > .005 or any crossed fn.
+
+| repo | commits | flagged | erosion first -> last | worst commit (dEro / dDup / crossed) |
+|---|---|---|---|---|
+| Tools/skilljepa | 75 | 38 | .320 -> .835 | 9b3de4c +.137/0/1; c6aeb10 +.010/+.059/2 |
+| Tools/playtest | 8 | 3 | 0 -> .5+ | 10555ee +.503/0/2 |
+| github/water-gym | 79 | 22 | - | e1ee90e +.472/0/3 |
+| github/manxtt-decomp | 11 | 3 | - | 91b1176 +.164/0/3 |
+| github/scorcher-decomp | 13 | 3 | - | no erosion/dup rise (crossed only) |
+| github/codes (last 120) | 120 | 30 | ~.71-.73 | 973ebda +.004/0/14 |
+
+Known-bad checks:
+- skilljepa c6aeb10 (A6c nudger) = copy-patch of a6b_nudger.py: the pair has dup .852, a6c main() CC 83. Gate flags it on dup (+.059) and 2 crossed fns. The exact SlopCodeBench pattern (fresh copy instead of reuse).
+- playtest 10555ee (local model writes reactions.py + tickets.py, tests 17/17 green) flagged erosion +.503; the NEXT commit c773c6f is "applies reviewer fixes (case-insensitive word match, empty target, None loc, dup ids)" = bugs the green suite missed.
+- water-gym foam rounds 6/8 (f890267, 9b996ee) flagged erosion+dup; later commits b179425/d188064 revert foam defaults.
+- skilljepa erosion rose .32 -> .835 over 75 commits (one-off experiment scripts with big main()); 38/75 commits would have failed.
+- Big repos (codes, 700+ files): repo-wide erosion share barely moves (+.004) even when 14 fns cross CC 10 -> the `crossed` rule carries the gate there, not the share.
+
+Self-test: qstd.py's own first draft FAILED its gate (6 fns crossed CC10: gate 23, files_at 12, hook 11, main 11); split into helpers -> PASS, replay numbers unchanged.
+Raw replay tables: %TEMP%/claude-cap/replay_*.txt (not kept).

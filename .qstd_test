@@ -1,0 +1,1 @@
+py -3.13 -I test_qstd.py
