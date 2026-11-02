@@ -7,8 +7,8 @@ Metrics over a set of .py files:
   py -3.13 -I qstd.py diff REPO A [B]                         metrics at rev A vs rev B (B default WT = working tree) + fns that crossed CC 10
   py -3.13 -I qstd.py gate REPO [--test CMD] [--base REV] [--accept] [--log]
        PASS only if the FULL test suite passes AND erosion/dup rise <= .005 vs last accepted (REPO/.git/qstd_accepted.json, else HEAD)
-       AND no fn crossed CC 10 (--allow-cc to waive). Suite: --test, else REPO/.qstd_test (one command line). No suite -> UNTESTED.
-       Exit 0 PASS, 1 FAIL, 2 UNTESTED. One verdict line, then JSON. --accept stores B=HEAD as new base on PASS. --log appends the reward row.
+       AND no fn crossed CC 10 (--allow-cc to waive). Output: 1 line; FAIL adds compact why/crossed/tests JSON; --json = full. Suite: --test, else REPO/.qstd_test (one command line). No suite -> UNTESTED.
+       Exit 0 PASS, 1 FAIL, 2 UNTESTED. --accept stores B=HEAD as new base on PASS. --log appends the reward row.
   py -3.13 -I qstd.py replay REPO [--n N] [--top K]           metrics per first-parent commit (oldest first) + biggest rises
   py -3.13 -I qstd.py hook                                    PostToolUse (Edit|Write) stdin JSON: edited .py vs its HEAD blob; prints a warning only (opt-in, see skill quality-standard)
 Reward rows (--log): data/qstd_rewards.jsonl (untracked, data/* ignored): {ts, repo, base, rev, verdict, reward, d_erosion, d_dup, crossed, tests}."""
@@ -180,16 +180,21 @@ def log_reward(out):
     with open(REWARDS, "a", encoding="utf-8") as f: f.write(json.dumps(row) + "\n")
 
 
-def gate(repo, test=None, base=None, accept=False, allow_cc=False, log=False, rev="WT"):
+def report(out, a, b, verbose):
+    """One verdict line; FAIL adds compact why/crossed/tests JSON; verbose = full JSON."""
+    note = "; ".join(out["why"]) or ("suite ok" if out["tests"] else "no test suite (set --test or .qstd_test)")
+    print(f"qstd {out['verdict']}: {note} | erosion {a['erosion']}->{b['erosion']} dup {a['dup']}->{b['dup']} cc10 {a['cc10']}->{b['cc10']}")
+    if verbose or out["verdict"] == "FAIL": print(json.dumps(out if verbose else {k: out[k] for k in ("why", "crossed", "tests")}, separators=(",", ":")))
+
+
+def gate(repo, test=None, base=None, accept=False, allow_cc=False, log=False, rev="WT", verbose=False):
     accf = os.path.join(git(repo, "rev-parse", "--absolute-git-dir").decode().strip(), "qstd_accepted.json"); base = base or accepted_base(accf)
     a, b = metrics(files_at(repo, base)), metrics(files_at(repo, rev)); d = compare(a, b)
     tf = os.path.join(repo, ".qstd_test"); test = test or (read(tf).strip() if os.path.isfile(tf) else None)
     suite = run_suite(repo, test) if test else None
     verdict, why, reward = judge(d, suite, allow_cc); head = git(repo, "rev-parse", "HEAD").decode().strip()
     out = {"verdict": verdict, "why": why, "reward": reward, "repo": os.path.abspath(repo), "base": base, "rev": rev, "head": head, "before": pub(a), "after": pub(b), **d, "tests": suite}
-    note = "; ".join(why) or ("suite ok" if suite else "no test suite (set --test or .qstd_test)")
-    print(f"qstd {verdict}: {note} | erosion {a['erosion']}->{b['erosion']} dup {a['dup']}->{b['dup']} cc10 {a['cc10']}->{b['cc10']}")
-    print(json.dumps(out, indent=1))
+    report(out, a, b, verbose)
     if accept and verdict == "PASS":
         with open(accf, "w") as f: json.dump({"rev": head, "ts": time.strftime("%Y-%m-%d %H:%M"), "metrics": pub(b)}, f)
     if log: log_reward(out)
@@ -252,8 +257,8 @@ def cmd_diff(rest):
 
 def cmd_gate(rest):
     test, base, rev = take(rest, "--test"), take(rest, "--base"), take(rest, "--rev", "WT")
-    acc, allow, log = (take_flag(rest, f) for f in ("--accept", "--allow-cc", "--log"))
-    return gate(rest[0] if rest else ".", test, base, acc, allow, log, rev)
+    acc, allow, log, verbose = (take_flag(rest, f) for f in ("--accept", "--allow-cc", "--log", "--json"))
+    return gate(rest[0] if rest else ".", test, base, acc, allow, log, rev, verbose)
 
 
 def cmd_replay(rest):

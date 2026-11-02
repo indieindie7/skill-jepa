@@ -1,5 +1,5 @@
 """test_qstd.py: qstd metrics on synthetic code. py -3.13 -I test_qstd.py"""
-import json, os, subprocess, sys, tempfile, unittest
+import os, subprocess, sys, tempfile, unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qstd
 
@@ -58,7 +58,7 @@ class Gate(unittest.TestCase):
     def _gate(self, d, test):
         import io, contextlib
         with contextlib.redirect_stdout(io.StringIO()) as out: rc = qstd.gate(d, test)
-        json.loads(out.getvalue().split("\n", 1)[1]); return rc
+        self.assertTrue(out.getvalue().startswith("qstd ")); return rc
 
 
 if __name__ == "__main__": unittest.main()
