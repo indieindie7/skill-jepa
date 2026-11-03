@@ -33,6 +33,17 @@ class Metrics(unittest.TestCase):
         d = qstd.compare(qstd.metrics({"a.py": FLAT}), qstd.metrics({"a.py": grown}))
         self.assertEqual(d["crossed"], ["a.py::f 1->13"]); self.assertGreater(d["d_erosion"], .5)
 
+    def test_cognitive(self):
+        g = lambda s: qstd.cog(qstd.ast.parse(s).body[0])
+        self.assertEqual(g(BRANCHY), 12)                                                     # 12 flat ifs: cog 12 (cc 13)
+        deep = "def d(a,b,c,e):\n    if a:\n        if b:\n            if c:\n                if e:\n                    return 1\n"
+        self.assertEqual(g(deep), 1 + 2 + 3 + 4)                                           # nesting penalty: cog 10, cc 5
+        primes = "def p(m):\n    t = 0\n    for i in range(m):\n        for j in range(2, i):\n            if i % j == 0:\n                break\n    return t\n"
+        self.assertEqual(g(primes), 6)                                                       # Sonar sumOfPrimes minus labelled continue
+        self.assertEqual(g("def e(x):\n    if x: return 1\n    elif x > 2: return 2\n    else: return 3\n"), 3)
+        self.assertEqual(g("def m(x):\n    match x:\n        case 1: return 1\n        case 2: return 2\n"), 1)
+        self.assertEqual(g("def b(a, c, d):\n    return a and c or d\n"), 2)                 # 'or' of an 'and': two BoolOps
+
     def test_syntax_error_counted(self):
         self.assertEqual(qstd.metrics({"bad.py": "def (:\n"})["parse_err"], 1)
 

@@ -19,3 +19,10 @@ Known-bad checks:
 
 Self-test: qstd.py's own first draft FAILED its gate (6 fns crossed CC10: gate 23, files_at 12, hook 11, main 11); split into helpers -> PASS, replay numbers unchanged.
 Raw replay tables: %TEMP%/claude-cap/replay_*.txt (not kept).
+
+## 2026-11-03 cognitive complexity trial (qstd.py cog <repo>)
+- SonarSource cognitive complexity (nesting-weighted) vs McCabe CC, Spearman over all fns:
+  - skilljepa 316 fns rho .988 (cc>10: 63, cog>=15: 58); top cog-only: eval_all.py::table cc10 cog24, ajax_eval.py::evaluate cc9 cog19.
+  - playtest 59 fns rho 1.0 (5 vs 5); cog-only tickets.py::merge cc10 cog17.
+  - water-gym skipped (Rust, metric is Python-only).
+- Verdict: on our code cognitive ~= CC; gate stays CC10. `cog` stays a report for spotting deep nesting.

@@ -33,6 +33,60 @@ def cc(fn):
     return c
 
 
+NEST = (ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.IfExp, ast.comprehension, ast.Match)
+COG_HI = 15   # SonarSource default
+
+
+def cog(fn):
+    """SonarSource cognitive complexity (2017), Python cut: structures +1 +nesting; elif/else +1 flat;
+    each BoolOp +1; nested defs/classes are their own fn, lambdas nest. Not used by the gate (11-03 trial)."""
+    def kids(n, nest): return sum(node(c, nest) for c in ast.iter_child_nodes(n))
+    def if_(n, nest, flat):
+        s = 1 + (0 if flat else nest) + node(n.test, nest) + sum(node(c, nest + 1) for c in n.body)
+        if len(n.orelse) == 1 and isinstance(n.orelse[0], ast.If): return s + if_(n.orelse[0], nest, True)
+        return s + (1 + sum(node(c, nest + 1) for c in n.orelse) if n.orelse else 0)
+    def node(n, nest):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)): return 0
+        if isinstance(n, ast.Lambda): return kids(n, nest + 1)
+        if isinstance(n, ast.If): return if_(n, nest, False)
+        if isinstance(n, NEST): return 1 + nest + len(getattr(n, "ifs", ())) + kids(n, nest + 1)
+        return (isinstance(n, ast.BoolOp)) + kids(n, nest)
+    return sum(node(c, 0) for c in fn.body)
+
+
+def ranks(xs):
+    """Average rank per value (ties), for Spearman."""
+    pos = {}
+    for i, v in enumerate(sorted(xs)): pos.setdefault(v, []).append(i)
+    return [sum(pos[v]) / len(pos[v]) for v in xs]
+
+
+def pearson(a, b):
+    ma, mb = sum(a) / len(a), sum(b) / len(b)
+    den = (sum((x - ma) ** 2 for x in a) * sum((y - mb) ** 2 for y in b)) ** .5
+    return round(sum((x - ma) * (y - mb) for x, y in zip(a, b)) / den, 3) if den else None
+
+
+def fn_rows(files):
+    """-> [(path::name, cc, cog)] for every def in {path: src}."""
+    rows = []
+    for p, src in files.items():
+        try: tree = ast.parse(src)
+        except (SyntaxError, ValueError): continue
+        rows += [(f"{p}::{n.name}", cc(n), cog(n)) for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    return rows
+
+
+def cog_compare(files):
+    """CC vs cognitive per fn: Spearman rho + where they disagree (11-03 trial for the standards survey)."""
+    rows = fn_rows(files)
+    if not rows: return {"fns": 0}
+    top = lambda keep, col: [f"{n} cc{c} cog{g}" for n, c, g in sorted((r for r in rows if keep(r)), key=lambda r: -r[col])[:5]]
+    return {"fns": len(rows), "rho": pearson(ranks([r[1] for r in rows]), ranks([r[2] for r in rows])),
+            "cc_hi": sum(r[1] > CC_HI for r in rows), "cog_hi": sum(r[2] >= COG_HI for r in rows),
+            "only_cog": top(lambda r: r[2] >= COG_HI and r[1] <= CC_HI, 2), "only_cc": top(lambda r: r[1] > CC_HI and r[2] < COG_HI, 1)}
+
+
 def fns(src):
     """-> [(qualname, cc, loc)]; loc = nonblank lines of the def minus nested defs. None on syntax error."""
     try: tree = ast.parse(src)
@@ -265,7 +319,7 @@ def cmd_replay(rest):
     n, top = int(take(rest, "--n", 0)), int(take(rest, "--top", 5)); replay(rest[0] if rest else ".", n, top); return 0
 
 
-CMDS = {"scan": lambda r: scan(r) or 0, "diff": cmd_diff, "gate": cmd_gate, "replay": cmd_replay, "hook": lambda r: hook()}
+CMDS = {"scan": lambda r: scan(r) or 0, "cog": lambda r: print(json.dumps(cog_compare(wt_files(r[0] if r else ".")), indent=1)) or 0,"diff": cmd_diff, "gate": cmd_gate, "replay": cmd_replay, "hook": lambda r: hook()}
 
 
 def main(av):
