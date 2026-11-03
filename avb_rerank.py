@@ -9,6 +9,7 @@ import numpy as np, torch, torch.nn as nn, torch.nn.functional as F
 import policy_eval as pe, skilljepa as sj, avb_feats as af
 
 
+DEV = torch.device(os.environ.get("AVB_DEV", "cuda" if torch.cuda.is_available() else "cpu"))   # 11-03 A18b: gpu when visible (no CPU slop); CUDA_VISIBLE_DEVICES picks the card
 ARCH = {"d": 256, "blocks": 2, "mixer": "attn", "lexf": True}   # 10-29 --d/--blocks (shrink step): defaults = production head; ff = 2d, out hidden = max(d//2, 8) (= shrink.SHead)
 
 
@@ -63,7 +64,7 @@ class Head(nn.Module):
 
 def epoch(m, opt, X, y, tq=None, tm=None, W=0.0):
     """CE(gold) on rows with y >= 0 (+ W * KL(teacher || student) over K cands + none + other on rows with tm; y == -2 rows = unlabelled, KL only)."""
-    m.train(); perm = torch.randperm(len(X))
+    m.train(); perm = torch.randperm(len(X), device=X.device)
     for b in range(0, len(perm), 64):
         i = perm[b:b + 64]
         if tq is None: loss = F.cross_entropy(m(X[i]), y[i])
@@ -76,20 +77,20 @@ def epoch(m, opt, X, y, tq=None, tm=None, W=0.0):
 
 def run(seed, parts, attn, ep=None, pat=8, refit=True, kl=0.0):
     """val-fit head (early stop on VAL CE, thr on VAL) and, if refit, a fresh head trained on parts['refit'] for the chosen epoch count; both scored on test with the same thr."""
-    ep = ep or ARCH.get("ep", 60); tr, va = parts["train"], parts["val"]; din = tr["T"].shape[2]; mk = lambda: Head(din, attn=attn, other=kl > 0)
-    tt = lambda P: (torch.tensor(P["tq"]), torch.tensor(P["tm"])) if kl > 0 else (None, None); tqt, tmt = tt(tr)
+    ep = ep or ARCH.get("ep", 60); tr, va = parts["train"], parts["val"]; din = tr["T"].shape[2]; mk = lambda: Head(din, attn=attn, other=kl > 0).to(DEV)
+    tt = lambda P: (torch.tensor(P["tq"], device=DEV), torch.tensor(P["tm"], device=DEV)) if kl > 0 else (None, None); tqt, tmt = tt(tr)
     torch.manual_seed(seed); np.random.seed(seed); m = mk(); opt = torch.optim.AdamW(m.parameters(), 1e-3, weight_decay=1e-2)
-    Xt, yt, Xv, yv = torch.tensor(tr["T"]), torch.tensor(tr["y"]), torch.tensor(va["T"]), torch.tensor(va["y"]); ok = yv >= 0; best = (9e9, None, 0)
+    Xt, yt, Xv, yv = (torch.tensor(P[k], device=DEV) for P, k in ((tr, "T"), (tr, "y"), (va, "T"), (va, "y"))); ok = yv >= 0; best = (9e9, None, 0)
     for e in range(ep):
         epoch(m, opt, Xt, yt, tqt, tmt, kl); m.eval()
         with torch.no_grad(): vl = F.cross_entropy(m(Xv)[ok], yv[ok]).item()
         if vl < best[0]: best = (vl, {k: v.clone() for k, v in m.state_dict().items()}, e)
         elif e - best[2] >= pat: break
-    m.load_state_dict(best[1]); m.eval(); sc = lambda mm, P: mm(torch.tensor(P["T"])).detach().numpy()
+    m.load_state_dict(best[1]); m.eval(); sc = lambda mm, P: mm(torch.tensor(P["T"], device=DEV)).detach().cpu().numpy()
     Zv_ = sc(m, va); thr = af.tune_thr(Zv_, va); r = {"thr_val": round(thr, 4), "epochs": best[2] + 1, "val_ce": round(best[0], 4), "val_thr": af.metrics(Zv_, va, thr)}; Zt = sc(m, parts["test"])
     r["argmax"], r["thr"] = af.metrics(Zt, parts["test"]), af.metrics(Zt, parts["test"], thr); ms = [m]
     if refit:
-        torch.manual_seed(seed); m2 = mk(); opt = torch.optim.AdamW(m2.parameters(), 1e-3, weight_decay=1e-2); rf = parts["refit"]; Xr, yr = torch.tensor(rf["T"]), torch.tensor(rf["y"]); tqr, tmr = tt(rf)
+        torch.manual_seed(seed); m2 = mk(); opt = torch.optim.AdamW(m2.parameters(), 1e-3, weight_decay=1e-2); rf = parts["refit"]; Xr, yr = torch.tensor(rf["T"], device=DEV), torch.tensor(rf["y"], device=DEV); tqr, tmr = tt(rf)
         for e in range(best[2] + 1): epoch(m2, opt, Xr, yr, tqr, tmr, kl)
         m2.eval(); Z2 = sc(m2, parts["test"]); r["refit_argmax"], r["refit_thr"] = af.metrics(Z2, parts["test"]), af.metrics(Z2, parts["test"], thr); ms.append(m2)
     return ms, r
@@ -221,6 +222,10 @@ def main():
     parts["train"] = part(si, loo(si), random.Random(3), True)
     if not a.no_refit: parts["refit"] = part(ti, loo(ti), random.Random(4), True)
     parts = {k: parts[k] for k in ("train", "val", "test", "refit") if k in parts}
+    zs = None
+    if os.environ.get("AVB_SSTD"):   # 11-03 A18b: standardize the 12 scalar cols (train-part mean/sd) so they are not drowned by 2304 emb dims; folded back into inp.1 at --save (prod feats unchanged)
+        c0 = parts["train"]["T"].shape[2] - 12; S0 = parts["train"]["T"][..., c0:].reshape(-1, 12); zs = (S0.mean(0), np.maximum(S0.std(0), 1e-3) / float(os.environ["AVB_SSTD"]))
+        for P in parts.values(): P["T"][..., c0:] = (P["T"][..., c0:] - zs[0]) / zs[1]
     lt_ = S["test"]["lab"]; res, ms = [], []
     if a.distill:
         sweep(a, parts, S, K, nm, lt_, len(TV), len(ukeep), t0); return
@@ -234,8 +239,10 @@ def main():
     if not a.no_refit: out.update({nm + "_refit": agg("refit_argmax"), nm + "_refit_thr": agg("refit_thr")})
     if a.name == "avb2" and not a.no_attn: out.update({"recallK": info["recallK"], "n_out_of_k": info["n_out_of_k"], "K": K}); torch.save({"state": [[m.state_dict() for m in s] for s in ms], "din": parts["train"]["T"].shape[2], "K": K}, a.out.replace(".json", ".pt"))
     if a.save:   # 10-28: torch-free head file for opsd col 8 / holdout_check / trace_merge gate: val-fit head of the seed with the lowest val CE + its val-tuned none thr (avb_np.py format)
-        import avb_np; b = min(range(len(res)), key=lambda i: res[i]["val_ce"])
-        avb_np.save_head(a.save, ms[b][0].state_dict(), {"thr": res[b]["thr_val"], "K": K, "din": int(parts["train"]["T"].shape[2]), "seed": b, "val_ce": res[b]["val_ce"], "epochs": res[b]["epochs"], "extra_rows": len(ex["lab"]) if ex else 0, "created": time.strftime("%F %T"), "src": a.out})
+        import avb_np; b = min(range(len(res)), key=lambda i: res[i]["val_ce"]); st = ms[b][0].state_dict()
+        if zs is not None:   # fold (x - mu) / sd into inp.1: W' = W / sd, b' = b - W' mu (exact; dropout = identity at eval)
+            st = {k: v.detach().cpu().clone() for k, v in st.items()}; W = st["inp.1.weight"]; W[:, -12:] /= torch.tensor(zs[1], dtype=W.dtype); st["inp.1.bias"] -= W[:, -12:] @ torch.tensor(zs[0], dtype=W.dtype)
+        avb_np.save_head(a.save, st, {"sstd": os.environ.get("AVB_SSTD"), "thr": res[b]["thr_val"], "K": K, "din": int(parts["train"]["T"].shape[2]), "seed": b, "val_ce": res[b]["val_ce"], "epochs": res[b]["epochs"], "extra_rows": len(ex["lab"]) if ex else 0, "created": time.strftime("%F %T"), "src": a.out})
     json.dump(out, open(a.out, "w", encoding="utf-8"), indent=1); print(json.dumps({k: out[k] for k in out if k.startswith(nm) and not k.endswith("_runs")} | {"n": out["n"]}, indent=1))
 
 
