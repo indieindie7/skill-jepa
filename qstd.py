@@ -315,7 +315,7 @@ def cmd_diff(rest):
 
 def cmd_gate(rest):
     test, base, rev = take(rest, "--test"), take(rest, "--base"), take(rest, "--rev", "WT")
-    acc, allow, log, verbose = (take_flag(rest, f) for f in ("--accept", "--allow-cc", "--log", "--json"))
+    acc, allow, nolog, verbose = (take_flag(rest, f) for f in ("--accept", "--allow-cc", "--no-log", "--json")); log = not nolog   # rows accrue with use (Q1 needs 50)
     return gate(rest[0] if rest else ".", test, base, acc, allow, log, rev, verbose)
 
 
