@@ -1,1 +1,1 @@
-py -3.13 -I test_qstd.py
+py -3.13 -I -m unittest discover -s . -p "test_qstd*.py"

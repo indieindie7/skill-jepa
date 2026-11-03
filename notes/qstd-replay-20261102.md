@@ -26,3 +26,9 @@ Raw replay tables: %TEMP%/claude-cap/replay_*.txt (not kept).
   - playtest 59 fns rho 1.0 (5 vs 5); cog-only tickets.py::merge cc10 cog17.
   - water-gym skipped (Rust, metric is Python-only).
 - Verdict: on our code cognitive ~= CC; gate stays CC10. `cog` stays a report for spotting deep nesting.
+
+## 2026-11-03 falsifier suite (test_qstd_falsifiers.py, 14 tests x 12 seeds on generated code)
+- One test per real falsifier: c6aeb10 copy-patch, SlopCodeBench forge main() growth, codes big-repo crossed rule, playtest 10555ee green-narrow-suite = UNTESTED, delete rewarded, qstd gate() CC23 split, water-gym revert neutral, broken file, reward order; invariants: rename, reorder, comments/indent, file move, <6-line overlap.
+- Found and fixed 2 gate holes: (1) a file that stops parsing dropped out of the weights -> erosion FELL -> PASS; now d_parse>0 = FAIL. (2) moving/renaming a file with a CC>10 fn was reported as `crossed`; now same qualname+CC elsewhere in base = moved, not crossed.
+- Dropped one wrong invariant of mine: removing spaces around `=` changes normalized lines (norm collapses whitespace runs, does not delete them); only re-indent/extra spaces are neutral.
+- .qstd_test now runs both files (unittest discover test_qstd*.py). Self-gate PASS; judge/scan/hook sit at CC 10 exactly (limit is >10).

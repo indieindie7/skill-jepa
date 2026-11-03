@@ -185,9 +185,12 @@ def files_at(repo, rev):
 
 
 def compare(a, b):
-    """-> deltas + fns that crossed CC 10 (new fn CC>10 or old fn rose from <=10 to >10)."""
-    crossed = sorted(f"{k} {a['_fcc'].get(k, '-')}->{c}" for k, c in b["_fcc"].items() if c > CC_HI and a["_fcc"].get(k, 0) <= CC_HI)
-    return {"d_erosion": round(b["erosion"] - a["erosion"], 4), "d_dup": round(b["dup"] - a["dup"], 4), "d_cc10": b["cc10"] - a["cc10"], "crossed": crossed}
+    """-> deltas + fns that crossed CC 10 (new fn CC>10 or old fn rose from <=10 to >10). A fn moved between files with the same CC is not a crossing."""
+    moved = {(k.split("::", 1)[1], c) for k, c in a["_fcc"].items()}
+    crossed = sorted(f"{k} {a['_fcc'].get(k, '-')}->{c}" for k, c in b["_fcc"].items()
+                     if c > CC_HI and a["_fcc"].get(k, 0) <= CC_HI and (k.split("::", 1)[1], c) not in moved)
+    return {"d_erosion": round(b["erosion"] - a["erosion"], 4), "d_dup": round(b["dup"] - a["dup"], 4), "d_cc10": b["cc10"] - a["cc10"],
+            "d_parse": b["parse_err"] - a["parse_err"], "crossed": crossed}
 
 
 def pub(m): return {k: v for k, v in m.items() if not k.startswith("_")}
@@ -214,8 +217,9 @@ def run_suite(repo, cmd, timeout=1800):
 
 
 def judge(d, suite, allow_cc=False):
-    """-> (verdict, why, reward). FAIL on broken suite, erosion/dup rise > THR, or a fn crossing CC 10; PASS needs a suite."""
+    """-> (verdict, why, reward). FAIL on broken suite, a file that stopped parsing, erosion/dup rise > THR, or a fn crossing CC 10; PASS needs a suite."""
     why = ([f"suite rc={suite.get('rc')}"] if suite and not suite["ok"] else []) + [f"{k[2:]} +{d[k]}" for k in ("d_erosion", "d_dup") if d[k] > THR]
+    if d.get("d_parse", 0) > 0: why.append(f"{d['d_parse']} file(s) no longer parse")   # a broken file drops out of the weights and fakes a cleanup
     if d["crossed"] and not allow_cc: why.append(f"{len(d['crossed'])} fn crossed CC{CC_HI}")
     verdict = "FAIL" if why else ("PASS" if suite else "UNTESTED")
     reward = {"PASS": 1.0, "UNTESTED": 0.0, "FAIL": -1.0}[verdict] - 10 * (max(d["d_erosion"], 0) + max(d["d_dup"], 0))
