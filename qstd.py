@@ -290,11 +290,16 @@ def hook():
     try: p = (json.load(sys.stdin).get("tool_input") or {}).get("file_path", "")
     except ValueError: return 0
     if not p.endswith(".py") or not os.path.isfile(p): return 0
-    old = head_src(p); a, b = metrics({p: old} if old else {}), metrics({p: read(p)}); d = compare(a, b)
-    msg = [f"fn crossed CC{CC_HI}: {', '.join(x.split('::')[1] for x in d['crossed'][:4])} -> split into helpers"] if d["crossed"] else []
-    if d["d_dup"] > 0.02: msg.append(f"dup {a['dup']}->{b['dup']} (copy-paste? reuse/delete instead)")
+    old = head_src(p); a, b = metrics({p: old} if old else {}), metrics({p: read(p)}); msg = hook_msgs(a, b, compare(a, b))
     if msg: print(f"qstd {os.path.basename(p)}: " + "; ".join(msg), file=sys.stderr); return 2
     return 0
+
+
+def hook_msgs(a, b, d):
+    if b["parse_err"]: return ["file no longer parses"]
+    msg = [f"fn crossed CC{CC_HI}: {', '.join(x.split('::')[1] for x in d['crossed'][:4])} -> split into helpers"] if d["crossed"] else []
+    if d["d_dup"] > 0.02: msg.append(f"dup {a['dup']}->{b['dup']} (copy-paste? reuse/delete instead)")
+    return msg
 
 
 def take(rest, name, default=None):
