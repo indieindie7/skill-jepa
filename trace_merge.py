@@ -137,8 +137,12 @@ def main():
         st["history"] = h; st["low_surprise"] = low_surprise(h, st["retrain_hist"]); print(json.dumps(st, indent=1)); return 0
     if todo:
         import skilljepa as sj
-        try: E = sj.embed([sj.Q_PRE + p["q"] for p in todo])
-        except OSError as e:
+        for k in range(6):   # 8084 can still be starting at 07:05 after wake (down 11-03 + 11-04): retry 5 min
+            try: E = sj.embed([sj.Q_PRE + p["q"] for p in todo]); break
+            except OSError as err:
+                e = err
+                if k < 5: time.sleep(60)
+        else:
             open(LOG, "a", encoding="utf-8").write(f"{time.strftime('%F %T')} ERR embedder down {e}; {msg}\n"); print("embedder down:", e); return 2
         X = np.vstack([X, E]); np.savez(EMB + ".tmp.npz", X=X); os.replace(EMB + ".tmp.npz", EMB)
         with open(PT, "a", encoding="utf-8", newline="\n") as f:
