@@ -27,6 +27,7 @@
 - A6c shadow wired 11-04 (6833d27): avb_serve.nud() writes route.log col 10.
 - A18 weight-space edit: NOT SUPPORTED (8ba63ec, hit1 .605 -> .610, bar +.02).
 - A18b standardized scalars: NOT SUPPORTED (b16cd61, hit1 .615).
+- 11-05 keep-or-drop (X0-X9 on the frozen holdout + live probe): learned head DROPPED, nothing promoted; X6 head gate passed a mis-specified bar (lab_cov .42), hybrid X9 failed every F, LR gate + A6c nudge not promoted. opsd `AVB_GATE = False`, shadow col 8 only. PLAN "11-05 keep-or-drop" + two lines after it.
 - A11-A17, A6b: not supported (see PLAN 165-176). A15 Grassmann mixer NOT SUPPORTED (PLAN 174).
 - ASTATE claim store `astate.py` + `tests/idea_astate_test.py` (6b850b2), idea #144 status review (gain .55).
 - compact_check scoped check (`~/.claude/hooks/compact_check.py`): failed real test, opt-in only `COMPACT_SCOPED=1`.
@@ -49,11 +50,11 @@
 - Untracked logs a12_run.log, a13b_*.log: leave alone.
 
 ## 6. Open items
-1. Judge A6c shadow after 1 day: on route.log rows with col 10, compare nud= vs avb top vs skill actually used; promote only if nud >= avb top.
-2. A14 LR abstain gate: fit offline on the `gf=` rows (815 on 11-04 late), PLAN line 175.
+1. CLOSED 11-05: learned-head line DROPPED (SELFIMPROVE_PLAN.md "## 11-05 keep-or-drop ablation" + the two "11-05" lines after it). A6c nudge judged (n=10 tie, not promoted); LR gate re-tested on the holdout (not supported); head-as-gate X6 passed a mis-specified bar, failed live + hybrid X9. Nothing promoted; opsd `AVB_GATE = False`, shadow col 8 continues.
+2. If a gate is ever retried: bar must include lab_cov / lab_correct (X9 pattern in live_gate_20261105.py) and a live probe on canonical skill phrases before promotion.
 3. Prospector pre-registration (not started).
 4. Q1 qstd reward (needs >= 50 rows in data/qstd_rewards.jsonl; 5 on 11-04); judge qstd hook ~11-10 (see HANDOFF-quality-standard.md).
 5. #141 waits for a free GPU via opsd.
 
 ## 7. Exact next step
-- On or after 2026-11-05 23:00: parse route.log rows with `nud=` and score nud vs avb argmax against the used skill (usage.jsonl, same sid, next 10 min). Record in SELFIMPROVE_PLAN after line 177.
+- None on the learned line. Optional cleanup: stop shadow col 8 logging (opsd _avb_log) if nobody consumes it; production stays hand router + session table + NOMATCH .35. opsd must run on Python 3.13 (`pyw -3.13 -I opsd.py`).

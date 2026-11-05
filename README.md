@@ -197,3 +197,6 @@ Attribution: test-file 508, pinned 33 (27 of them the effect-log binary-mode PR)
 | leave-one-FILE-out Hit@1 / Hit@3 | .448 / .537 | .440 / .525 | .418 / .517 |
 
 Majority class .222. The record split is what a re-run sees (other failures of the same module already labelled); the file split is the honest number for a never-seen module, where the test-file name no longer leaks the label.
+
+## 11-05 keep-or-drop verdict (frozen holdout `data/holdout.jsonl`, n_lab 400 / n_none 837)
+The learned embedding head (A11-A18) never beat the hand router + session-history table on hit1/hit3 (X1 .603/.785 vs X3 .632/.815, SE ~.024). As a live abstain gate it passed a mis-specified bar (acc_abst .728 at fr_none .055) while routing only 42 % of labeled prompts, and a live probe abstained on canonical skill phrases ("convert this movie folder to hevc", A0 score 3.42). Hybrid gates (head | A0 top >= F) failed every F. Nothing promoted: opsd keeps the BM25+prior router with the NOMATCH .35 rule; the head stays shadow-logged (route.log col 8, `AVB_GATE = False`). Scripts: `ablate_20261105.py`, `live_gate_20261105.py`, `lr_gate_holdout_20261105.py`, `a6c_shadow_judge.py`, `a14_gate_fit.py`; details in SELFIMPROVE_PLAN.md.

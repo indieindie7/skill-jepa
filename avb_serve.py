@@ -12,6 +12,7 @@ SK = os.path.join(os.path.expanduser("~"), ".claude", "skills")
 EMB_URL = os.environ.get("SKILLJEPA_EMB_URL", "http://127.0.0.1:8084/v1/embeddings")
 LOG = os.path.join(D, "avb_serve.log")
 RETRY = 300.0   # s between load / outage retries
+GATE_OFF = 60.0  # 11-05 s the live gate stays off after a scoring failure (dead 8084 = one 3 s timeout per minute, not per route)
 
 
 FU = re.compile(r"^\W*(ok|okay|yes|yep|sure|go|go on|continue|proceed|do it|do them all|please do them all|all|next|thanks|thx|y)\W*$", re.I)  # = a14_abstain.FU
@@ -31,7 +32,7 @@ def gate_feats(q, z, zn):
 
 class AvbServe:
     def __init__(self, head=None):
-        self.head = head or os.path.join(D, "avb_head.npz"); self.ok = False; self.next_try = 0.0; self.lock = threading.Lock(); self.last = {}; self.use = {"mt": -1, "rows": []}; self.warned = 0.0
+        self.head = head or os.path.join(D, "avb_head.npz"); self.ok = False; self.next_try = 0.0; self.lock = threading.Lock(); self.last = {}; self.use = {"mt": -1, "rows": []}; self.warned = 0.0; self.gate_retry = 0.0
 
     def _log(self, msg):
         try: open(LOG, "a", encoding="utf-8").write(time.strftime("%F %T") + " " + msg + "\n")
@@ -113,20 +114,43 @@ class AvbServe:
             return "nud=" + c[int(np.argmax(np.asarray(z) + w * lp))]
         except Exception: return "nud="
 
-    def col(self, q, sid, skills):
-        """route.log col 8; '' on any problem (head file missing, 8084 down, ...): never raises."""
+    def _ready(self, now):
+        """load on first use; False while disabled (retry every RETRY s). Caller holds self.lock."""
+        if self.ok: return True
+        if now < self.next_try: return False
+        try: self._load(); return True
+        except Exception as e:
+            self.next_try = now + RETRY; self._log(f"avb disabled, head/pool not loadable ({type(e).__name__}: {e}); col 8 empty, retry in {int(RETRY)}s"); return False
+
+    def gate(self, q, sid):
+        """11-05 LIVE abstain gate for opsd.route() (SELFIMPROVE_PLAN 11-05 X6, frozen holdout: acc_with_abstain .253 -> .728, false-route-on-none .896 -> .055; ranking untouched).
+        -> (abstain, (c, z, zn)) with abstain = P(none) >= head meta thr (0.4485, holdout-tuned), or None = head/8084 unavailable (caller keeps its NOMATCH gate).
+        Sync (~130 ms embed); after a scoring failure the gate stays off GATE_OFF s."""
         try:
             with self.lock:
                 now = time.time()
-                if not self.ok:
-                    if now < self.next_try: return ""
-                    try: self._load()
-                    except Exception as e:
-                        self.next_try = now + RETRY; self._log(f"avb disabled, head/pool not loadable ({type(e).__name__}: {e}); col 8 empty, retry in {int(RETRY)}s"); return ""
+                if now < self.gate_retry or not self._ready(now): return None
                 try: c, z, zn = self.logits(q, sid, now)
                 except Exception as e:
-                    if now - self.warned > RETRY: self.warned = now; self._log(f"avb scoring failed ({type(e).__name__}: {e}); col 8 empty")
-                    return ""
+                    self.gate_retry = now + GATE_OFF
+                    if now - self.warned > RETRY: self.warned = now; self._log(f"avb scoring failed ({type(e).__name__}: {e}); gate off {int(GATE_OFF)}s")
+                    return None
+            Z = np.r_[np.asarray(z, np.float64), zn][None]
+            return bool(self.af.pnone(Z)[0] >= self.meta["thr"]), (c, z, zn)
+        except Exception: return None
+
+    def col(self, q, sid, skills, pre=None):
+        """route.log col 8; '' on any problem (head file missing, 8084 down, ...): never raises. pre = (c, z, zn) from gate() reuses its logits (one embed per route)."""
+        try:
+            with self.lock:
+                now = time.time()
+                if not self._ready(now): return ""
+                if pre is not None: c, z, zn = pre
+                else:
+                    try: c, z, zn = self.logits(q, sid, now)
+                    except Exception as e:
+                        if now - self.warned > RETRY: self.warned = now; self._log(f"avb scoring failed ({type(e).__name__}: {e}); col 8 empty")
+                        return ""
                 d = dict(zip(c, z))
                 return "avb=" + ",".join([f"{s}:{d[s]:.2f}" if s in d else f"{s}:nan" for s in skills] + [f"_none:{zn:.2f}"]) + chr(9) + gate_feats(q, z, zn) + chr(9) + self.nud(c, z, sid, now)
         except Exception: return ""
