@@ -41,6 +41,8 @@ class AvbServe:
         import skilljepa as sj, avb_np, avb_feats as af
         self.sj, self.np_, self.af = sj, avb_np, af; self.W = avb_np.load_head(self.head); self.meta = self.W["__meta__"]; self.K = self.meta["K"]
         X, Y, lab, _, _, names, _ = sj.data("prevskill", "all"); self.Y, self.names = Y, names; self.ix = {n: i for i, n in enumerate(names)}
+        from a6c_nudger import train_stats; from a17_user_profile import table_probs
+        self.tprob = table_probs; self.pg, self.Tg = train_stats(lab, sj.data("prevskill", "all")[6], np.arange(len(lab)), len(names))   # 11-04 A6c shadow col 10
         tp, te = os.path.join(D, "pairs_trace.jsonl"), os.path.join(D, "emb_trace.npz")
         if os.path.exists(tp) and os.path.exists(te):
             rows = [json.loads(l) for l in open(tp, encoding="utf-8") if l.strip()]; X0 = np.load(te)["X"]
@@ -100,6 +102,17 @@ class AvbServe:
         T = af.feats(xq, self.Y, E, B, Pr, cs, np.array([plab]), [{plab} if plab >= 0 else set()], True); Z = self.np_.forward(self.W, T)[0]
         return [self.names[j] for j in cs[0]], Z[:-1], float(Z[-1])
 
+    def nud(self, c, z, sid, now, w=0.3, lag=600):
+        """11-04 route.log col 10 'nud=<skill>' (shadow only, A6c rank-only nudge, holdout pass SELFIMPROVE_PLAN 11-04): argmax(head logits + w*log p_table(class | this session's skill uses >= lag s old)).
+        Live history = usage.jsonl uses only (holdout used labelled turns incl. none): approximation, the shadow day measures it."""
+        try:
+            N = len(self.names); sid = (sid or "")[:8]; ts = np.zeros((N + 1, N + 1)); cs = np.zeros(N + 1); prev = N
+            for ut, sk, us in sorted(self._usage(), key=lambda r: r[0]) if sid else []:
+                if us == sid and sk in self.ix and ut + lag <= now: k = self.ix[sk]; ts[prev, k] += 1; cs[k] += 1; prev = k
+            pt = self.tprob(prev, ts, cs, self.Tg, self.pg); lp = np.log(np.array([pt[self.ix[n]] for n in c]) + 1e-9)
+            return "nud=" + c[int(np.argmax(np.asarray(z) + w * lp))]
+        except Exception: return "nud="
+
     def col(self, q, sid, skills):
         """route.log col 8; '' on any problem (head file missing, 8084 down, ...): never raises."""
         try:
@@ -115,5 +128,5 @@ class AvbServe:
                     if now - self.warned > RETRY: self.warned = now; self._log(f"avb scoring failed ({type(e).__name__}: {e}); col 8 empty")
                     return ""
                 d = dict(zip(c, z))
-                return "avb=" + ",".join([f"{s}:{d[s]:.2f}" if s in d else f"{s}:nan" for s in skills] + [f"_none:{zn:.2f}"]) + chr(9) + gate_feats(q, z, zn)
+                return "avb=" + ",".join([f"{s}:{d[s]:.2f}" if s in d else f"{s}:nan" for s in skills] + [f"_none:{zn:.2f}"]) + chr(9) + gate_feats(q, z, zn) + chr(9) + self.nud(c, z, sid, now)
         except Exception: return ""
