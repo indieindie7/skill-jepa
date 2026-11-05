@@ -1,5 +1,7 @@
 # skill-jepa
 
+> **Status 2026-11-05: dropped.** On a frozen holdout (1237 prompts) the learned head never beat the plain trigger/BM25 router plus a per-chat previous-skill table (hit1 .603 vs .632, hit3 .785 vs .815), abstained on canonical skill phrases when used as a live gate, and every hybrid gate failed. Nothing from it runs in production; the code stays as a negative result. Details: the "11-05 keep-or-drop verdict" section at the end and `SELFIMPROVE_PLAN.md`.
+
 A small prototype: route a coding agent's prompt to one of its **skills** (folders of instructions, like Claude Code `~/.claude/skills/<name>/SKILL.md`) with a **JEPA-style latent predictor** instead of an LLM router.
 
 - **Context encoder:** frozen [EmbeddingGemma-300M](https://huggingface.co/google/embeddinggemma-300m) embeds the prompt as `x`.
