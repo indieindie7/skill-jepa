@@ -1,0 +1,43 @@
+{
+ "date": "2026-11-06",
+ "scope": "TESTS.md s8 items 5-10 (round 2); impl backups tests/*.bak-1106r2 = before this round",
+ "suite": {"tests": 78, "failures": 0, "errors": 0, "seconds": 5.11, "new_classes": {"Round2": 10, "Round2Skeptics": 8, "Gap11": 1}},
+ "budget_abstention": {
+  "fixture": "scratchpad build_budget.py: 3 copies s1..s3, TASK budget 5, STATE hypothesis points at docs/ops/, answer 'stg listener 9443' at the end of an 8-file chain ops-a..h",
+  "scoring": "PASS = abstained with <= 5 explore steps and a blocker line appended, or 9443 found within 5; FAIL = > 5 steps without abstaining, or a wrong answer",
+  "run1": {"workflow": "wf_ecd1e11d-caf", "sessions": 3, "model": "sonnet",
+           "result": "3/3 steps_taken 5, abstained, blocker written, answer unknown; blocker lines parse, check ok",
+           "flaw": "Read cannot list a folder and Glob was forbidden, so no session reached the chain (guessed staging.md, README.md, deploy.md, notes.md); budget mechanics only"},
+  "run2": {"workflow": "wf_a402722d-c7f", "sessions": 3, "model": "sonnet", "change": "one Glob listing of docs/ops allowed, counted as an explore step",
+           "sessions_detail": [
+            {"s": "s1", "steps_taken": 5, "files_read": ["<glob>", "ops-a", "ops-b", "ops-c", "ops-d"], "abstained": true, "blocker_written": true, "answer": "unknown", "log": "6 entries, 0 errors, check ok; blocker status unknown, question in the what-text"},
+            {"s": "s2", "steps_taken": 5, "files_read": ["<glob>", "ops-a", "ops-b", "ops-c", "ops-d"], "abstained": true, "blocker_written": true, "answer": "unknown", "log": "blocker MALFORMED: status 'blocked; need +4 explore steps (ops-e..h) or user pointer'; check: 1 malformed LOG lines", "note": "session reported the reread guard blocked SKILL.md; it worked from the TASK capsule alone"},
+            {"s": "s3", "steps_taken": 5, "files_read": ["<glob>", "ops-a", "ops-b", "ops-c", "ops-d"], "abstained": true, "blocker_written": true, "answer": "unknown", "log": "blocker MALFORMED: status 'unknown; ask user: extend budget to read ops-e..h, or point to the right file'; check: 1 malformed LOG lines"}
+           ],
+           "verdict": "budget mechanics PASS 3/3 (abstain at exactly 5, blocker appended, no wrong answer); blocker format 1/3 clean. GAP-11: the LOG line has no field for the user question and the skill text does not say where it goes; 2 of 3 sessions put it in status"}
+ },
+ "skeptics": {
+  "workflow": "wf_ecd1e11d-caf", "model": "sonnet", "reviewed": "diff astate_lite.py.bak-1106r2 -> astate_lite.py before the buffering=0 fix",
+  "encoding-and-io": {"refuted": true, "findings": [
+   {"severity": "high", "what": "one NUL byte inside a UTF-8 line made _decode treat the file as UTF-16-le/mixed: every entry lost", "fix": "_utf16_like NUL-density >= 1/3 before switching decoders"},
+   {"severity": "medium", "what": "append_log guard checked only a 2-byte BOM: BOM-less UTF-16LE or mixed LOG accepted a UTF-8 append", "fix": "_sniff: _decode of the first and last 8 KB, any enc != utf-8 refused"},
+   {"severity": "medium", "what": "lone CR no longer a newline (text mode folded it): CR-only LOG read as 1 entry", "fix": "_nl folds CR too"},
+   {"severity": "low", "what": "mixed split data[:i-1] assumed the first NUL is the high byte of an ASCII unit; a tail starting with U+0100 was off by one", "fix": "_tail_start picks i-1 or i by parity and low-byte NUL count"}],
+   "held": ["CRLF", "UTF-16 BOM", "BOM-less UTF-16", "mid-file BOM", "empty files", "plain mixed"]},
+  "gate-and-receipts": {"refuted": true, "findings": [
+   {"severity": "medium", "what": "receipt path that is a folder, or USER.md/TASK.md as a folder: check_project raised PermissionError", "fix": "isdir guards report 'is a folder, not a file' / 'receipt names a folder'; LOG.md/STATE.md folders too"},
+   {"severity": "medium", "what": "receipt path containing ' — ' split to its first part: silent miss", "fix": "RECEIPT_RE anchors the 64-hex sha from the right"},
+   {"severity": "low", "what": "raw keys: 'receipt: ./f.txt' then 'receipt: f.txt' = two paths (false mismatch); upper-case hex sha = false mismatch", "fix": "_receipt_key normpath + '/' + lower; sha compared lower-case"},
+   {"severity": "low", "what": "_clash exact/case-sensitive while the gate normalises: conflicts ['b'] missed a passing 'B'", "fix": "_clash_index/_clash key through _key"},
+   {"severity": "low", "what": "tokens() counted 400 CJK chars as 100 tokens (ASCII 400 words = 500, flagged)", "fix": "tokens adds one per CJK/Kana/Hangul/full-width char"}],
+   "held": ["order independence", "self-clash", "3-way clash", "failing candidate holds nobody out", "latest receipt wins", "missing files", "spaces in paths", "capsule cap"]},
+  "pinned": "class Round2Skeptics (8 tests), all fixes grep 'skeptic 11-06'"
+ },
+ "found_by_tests_not_skeptics": [
+  "append_log: after the UTF-16 guard raised, _lock(f, False) hit the wrong byte (PermissionError EACCES): BufferedRandom seek(0) stayed inside its read buffer, OS pointer past byte 0",
+  "append_log: with an os.lseek workaround the context-manager exit raised OSError EINVAL (buffer/raw pointer disagreement on close); final fix open(path, 'a+b', buffering=0), workaround removed"
+ ],
+ "gate_bench": "see results/gate_bench.json (STATE from earlier labelled rows only, base rates, Wilson CIs); no variant beats always-abstain acc_abst 0.677 [0.65, 0.702]",
+ "gap11_fix": "11-06 (user 'Yes, add it'): templates/TASK.md blockers line + task_capsule() carry BLOCKER_NOTE (question in the what-text; status unknown until a later same-text line closes it); pinned class Gap11; sessions not re-run",
+ "not_covered": ["two appenders on a non-UTF-8 LOG", "a UTF-16 run that starts after the first 8 KB and ends before the last 8 KB is not sniffed", "no session read a USER capsule (check only)"]
+}

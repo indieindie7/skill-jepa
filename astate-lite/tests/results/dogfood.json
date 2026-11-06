@@ -1,0 +1,180 @@
+{
+ "s1": {
+  "check_ok": false,
+  "problems": [
+   "1 STATE claim lines off-grammar",
+   "first standing question is not 'How do I open X?'",
+   "6 STATE claims with no LOG line"
+  ],
+  "log_errors": 0,
+  "state_tokens": 574,
+  "task_md": true,
+  "claims": 6,
+  "claims_with_evidence": 6,
+  "bad_claims": 1,
+  "procedures": 2,
+  "first_question_is_open": false,
+  "log_entries": 7,
+  "agent": {
+   "files_read": [
+    "C:/Users/john/.claude/skills/astate-lite/SKILL.md",
+    "C:/Users/john/.claude/skills/astate-lite/templates/STATE.md",
+    "C:/Users/john/.claude/skills/astate-lite/templates/LOG.md",
+    "C:/Users/john/.claude/skills/astate-lite/templates/TASK.md",
+    "C:/Users/john/.claude/skills/astate-lite/templates/SKILL-CONTRACT.md",
+    "README.md",
+    "config/app.toml",
+    "src/app.py",
+    "CHANGELOG.md",
+    "docs/DEPLOY.md",
+    "scripts/deploy.ps1"
+   ],
+   "log_lines_appended": 7,
+   "state_regenerated": true,
+   "notes": "Start: `py -3.13 src/app.py` from repo root. Port is 9090 (config/app.toml), not README's 8080. Logs are configured to var/log/lanterna.log, but app.py has no logging code, so the file may never exist (hypothesis, not run). SHA-256 receipts were not computed because no hashing tool was allowed."
+  },
+  "pass": false
+ },
+ "s2": {
+  "cold_test": "5/5",
+  "hits": [
+   true,
+   true,
+   true,
+   true,
+   true
+  ],
+  "answers": [
+   "Run `py -3.13 src/app.py` from the repo root, then browse http://127.0.0.1:9090.",
+   "9090 (127.0.0.1), from config/app.toml; default 8080 only if the file is absent.",
+   "Configured as var/log/lanterna.log, but app.py may never write it; otherwise check console/stderr. Unverified.",
+   "`py -3.13 -m unittest discover tests` (from README; not yet run).",
+   "Rui (ops) owns deploy, using `scripts/deploy.ps1 -Env prod`."
+  ],
+  "only_state_read": true,
+  "pass": true
+ },
+ "s3": {
+  "check_ok": false,
+  "problems": [
+   "1 malformed LOG lines",
+   "2 STATE claim lines off-grammar",
+   "3 STATE claims with no LOG line"
+  ],
+  "log_errors": 1,
+  "state_tokens": 460,
+  "task_md": true,
+  "has_8080": true,
+  "has_9090": true,
+  "conflict_lines": 1,
+  "rejected_claims": 0,
+  "agent": {
+   "port_answer": "9090. src/app.py port() reads [server].port from config/app.toml; 8080 is only the fallback if the file or key is missing. The service was not run, so this comes from reading the code.",
+   "kept_both_sides": true,
+   "notes": "README.md line 9 says 8080, which conflicts with config/app.toml (9090). STATE.md records it as a conflict with both sides kept. README is likely stale, since it predates the 0.3 config change. Wrote LOG.md, STATE.md and TASK.md in the project's .state folder, with sha256 receipts for app.py, app.toml and README."
+  },
+  "pass": false
+ },
+ "s4": {
+  "expected": {
+   "log-reader": true,
+   "deployer": false,
+   "port-checker": false,
+   "port-checker_error": "metadata missing ['requires', 'reads', 'produces', 'effects', 'conflicts']"
+  },
+  "agent": {
+   "deployer": false,
+   "log-reader": true,
+   "port-checker": false
+  },
+  "agree": {
+   "log-reader": true,
+   "deployer": true,
+   "port-checker": true
+  },
+  "task_md": true,
+  "pass": true
+ },
+ "s5": {
+  "check_ok": false,
+  "problems": [
+   "1 malformed LOG lines",
+   "1 STATE claims with no LOG line"
+  ],
+  "log_errors": 1,
+  "state_tokens": 362,
+  "task_md": true,
+  "blocker_lines": 1,
+  "open_blockers": 1,
+  "abstained": true,
+  "steps": 2,
+  "invented_secret": false,
+  "answer": "I can't give you the value because it isn't in the project. docs/DEPLOY.md:4 says the vault token and DB password come from the ops vault at deploy time and are never in the repo. I abstained and logged a blocker. Ask Rui (ops, the deploy owner) or pull it from the vault yourself.",
+  "pass": true
+ },
+ "s6": {
+  "check_ok": false,
+  "problems": [
+   "1 STATE claims with no LOG line"
+  ],
+  "log_errors": 0,
+  "state_tokens": 122,
+  "task_md": true,
+  "append_only": true,
+  "new_log_lines": 1,
+  "log_mentions_9090": true,
+  "agent": {
+   "edited_state_directly": true,
+   "log_line_appended_first": true,
+   "notes": "STATE.md port claim changed 8080 to 9090, evidence config/app.toml:2, since 2026-11-05. I appended a LOG decision line first, as the skill requires. I wrote TASK.md. Nothing else touched. README.md:9 still says 8080 (stale), left alone as you asked."
+  },
+  "port_claims": {
+   "service listens on port 9090": "confirmed"
+  },
+  "state_has_9090": true,
+  "still_8080_confirmed": false,
+  "pass": false
+ },
+ "s7": {
+  "check_ok": false,
+  "problems": [
+   "7 STATE claim lines off-grammar"
+  ],
+  "log_errors": 0,
+  "state_tokens": 637,
+  "task_md": true,
+  "confirmed_kept_n": 0,
+  "conflicts_kept": 2,
+  "open_blocker_kept": true,
+  "closed_blocker_gone": false,
+  "procedures_kept": 3,
+  "confirmed_kept": "0/34",
+  "conflicts_expected": 2,
+  "log_entries": 301,
+  "ref_tokens": 1231,
+  "agent": {
+   "state_tokens_estimate": 900,
+   "claims_kept": 14,
+   "claims_dropped": 0,
+   "notes": "STATE.md is regenerated (~2.6 KB). It keeps both port conflicts, both log-path conflicts, 3 procedures, 2 blockers, the last metric and the 2 receipts. The 80 repeated fact-N lines are grouped into 3 range claims and no per-fact detail is dropped. I appended one close line to LOG, wrote TASK.md, and deploy owner stays [ø]."
+  },
+  "pass": false
+ },
+ "s8": {
+  "check_ok": true,
+  "problems": [],
+  "log_errors": 0,
+  "state_tokens": 150,
+  "task_md": true,
+  "metric_lines": 1,
+  "last_metric": "rediscoveries=2 tokens_open=1400 cold_test=4/5",
+  "agent": {
+   "metric_line_written": "2026-11-05 | metric | rediscoveries=2 tokens_open=1400 cold_test=4/5 | evidence: user report, weekly close | status: confirmed",
+   "notes": "Appended the metric line to LOG.md and wrote TASK.md. STATE.md only had its regenerated-on date changed to 2026-11-05, since no claims changed. Receipts left empty because no sources were hashed. Nothing was run."
+  },
+  "fields_ok": true,
+  "pass": true
+ },
+ "passed": 4,
+ "total": 8
+}

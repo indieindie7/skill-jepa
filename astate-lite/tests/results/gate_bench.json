@@ -1,0 +1,185 @@
+{
+ "n": 1237,
+ "n_lab": 400,
+ "always_abstain": {
+  "hit1": 0.0,
+  "acc_abst": 0.677,
+  "fr_none": 0.0,
+  "acc_abst_ci": [
+   0.65,
+   0.702
+  ]
+ },
+ "base_rates": {
+  "labelled": 0.323,
+  "labelled_ci": [
+   0.298,
+   0.35
+  ],
+  "none": 0.677,
+  "n_none": 837,
+  "state": "STATE in _score holds only claims from EARLIER labelled rows of the same chat (gold = confirmed), never the row itself"
+ },
+ "name": {
+  "hit1": 0.007,
+  "hit1_ci": [
+   0.003,
+   0.022
+  ],
+  "acc_abst": 0.672,
+  "acc_abst_ci": [
+   0.645,
+   0.697
+  ],
+  "fr_none": 0.011,
+  "fr_none_ci": [
+   0.006,
+   0.02
+  ],
+  "loads": 12,
+  "precision": 0.25,
+  "precision_ci": [
+   0.089,
+   0.532
+  ]
+ },
+ "strong": {
+  "hit1": 0.06,
+  "hit1_ci": [
+   0.041,
+   0.088
+  ],
+  "acc_abst": 0.377,
+  "acc_abst_ci": [
+   0.35,
+   0.404
+  ],
+  "fr_none": 0.472,
+  "fr_none_ci": [
+   0.438,
+   0.506
+  ],
+  "loads": 536,
+  "precision": 0.045,
+  "precision_ci": [
+   0.03,
+   0.066
+  ]
+ },
+ "two_items": {
+  "hit1": 0.02,
+  "hit1_ci": [
+   0.01,
+   0.039
+  ],
+  "acc_abst": 0.534,
+  "acc_abst_ci": [
+   0.506,
+   0.561
+  ],
+  "fr_none": 0.221,
+  "fr_none_ci": [
+   0.194,
+   0.25
+  ],
+  "loads": 251,
+  "precision": 0.032,
+  "precision_ci": [
+   0.016,
+   0.062
+  ]
+ },
+ "any": {
+  "hit1": 0.275,
+  "hit1_ci": [
+   0.234,
+   0.321
+  ],
+  "acc_abst": 0.203,
+  "acc_abst_ci": [
+   0.181,
+   0.226
+  ],
+  "fr_none": 0.832,
+  "fr_none_ci": [
+   0.805,
+   0.855
+  ],
+  "loads": 1055,
+  "precision": 0.104,
+  "precision_ci": [
+   0.087,
+   0.124
+  ]
+ },
+ "name_or_strong": {
+  "hit1": 0.06,
+  "hit1_ci": [
+   0.041,
+   0.088
+  ],
+  "acc_abst": 0.377,
+  "acc_abst_ci": [
+   0.35,
+   0.404
+  ],
+  "fr_none": 0.472,
+  "fr_none_ci": [
+   0.438,
+   0.506
+  ],
+  "loads": 536,
+  "precision": 0.045,
+  "precision_ci": [
+   0.03,
+   0.066
+  ]
+ },
+ "strong_or_state": {
+  "hit1": 0.188,
+  "hit1_ci": [
+   0.152,
+   0.229
+  ],
+  "acc_abst": 0.39,
+  "acc_abst_ci": [
+   0.364,
+   0.418
+  ],
+  "fr_none": 0.513,
+  "fr_none_ci": [
+   0.479,
+   0.546
+  ],
+  "loads": 623,
+  "precision": 0.12,
+  "precision_ci": [
+   0.097,
+   0.148
+  ]
+ },
+ "state_and_any": {
+  "hit1": 0.255,
+  "hit1_ci": [
+   0.215,
+   0.3
+  ],
+  "acc_abst": 0.653,
+  "acc_abst_ci": [
+   0.626,
+   0.679
+  ],
+  "fr_none": 0.157,
+  "fr_none_ci": [
+   0.133,
+   0.183
+  ],
+  "loads": 259,
+  "precision": 0.394,
+  "precision_ci": [
+   0.336,
+   0.454
+  ]
+ },
+ "A0_hand_router_at_NOMATCH": null
+}

@@ -1,0 +1,18 @@
+{
+ "2x20": {
+  "procs": 2,
+  "rounds": 20,
+  "log_ok": 20,
+  "state_parses": 20,
+  "state_has_all": 20,
+  "worker_errors": 0
+ },
+ "8x10": {
+  "procs": 8,
+  "rounds": 10,
+  "log_ok": 10,
+  "state_parses": 10,
+  "state_has_all": 10,
+  "worker_errors": 1
+ }
+}

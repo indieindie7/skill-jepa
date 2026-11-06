@@ -1,0 +1,203 @@
+{
+ "summary": {
+  "cold_ok": {
+   "sessions": 3,
+   "hits": "7/7 7/7 7/7",
+   "peeked": 0,
+   "state_only": 3
+  },
+  "cold_wrong": {
+   "sessions": 3,
+   "hits": "7/7 7/7 7/7",
+   "peeked": 0,
+   "state_only": 3
+  }
+ },
+ "cold": [
+  {
+   "fx": "cold_ok",
+   "i": 0,
+   "hits": 7,
+   "peeked": 0,
+   "state_only": true,
+   "files_read": [
+    "C:\\Users\\john\\AppData\\Local\\Temp\\claude\\29abb69cf93759cc\\6e663357-a31a-4ba6-8531-4cc58f56fb29\\scratchpad\\cold\\cold_ok\\.state\\STATE.md"
+   ],
+   "answers": [
+    "9090",
+    "var/log/lanterna.log",
+    "py -3.13 src/app.py",
+    "unittest",
+    "Rui",
+    "unknown",
+    "unknown"
+   ]
+  },
+  {
+   "fx": "cold_ok",
+   "i": 1,
+   "hits": 7,
+   "peeked": 0,
+   "state_only": true,
+   "files_read": [
+    "C:\\Users\\john\\AppData\\Local\\Temp\\claude\\29abb69cf93759cc\\6e663357-a31a-4ba6-8531-4cc58f56fb29\\scratchpad\\cold\\cold_ok\\.state\\STATE.md"
+   ],
+   "answers": [
+    "9090",
+    "var/log/lanterna.log",
+    "py -3.13 src/app.py",
+    "unittest",
+    "Rui",
+    "unknown",
+    "unknown"
+   ]
+  },
+  {
+   "fx": "cold_ok",
+   "i": 2,
+   "hits": 7,
+   "peeked": 0,
+   "state_only": true,
+   "files_read": [
+    "C:\\Users\\john\\AppData\\Local\\Temp\\claude\\29abb69cf93759cc\\6e663357-a31a-4ba6-8531-4cc58f56fb29\\scratchpad\\cold\\cold_ok\\.state\\STATE.md"
+   ],
+   "answers": [
+    "9090",
+    "var/log/lanterna.log",
+    "py -3.13 src/app.py",
+    "unittest",
+    "Rui",
+    "unknown",
+    "unknown"
+   ]
+  },
+  {
+   "fx": "cold_wrong",
+   "i": 0,
+   "hits": 7,
+   "peeked": 0,
+   "state_only": true,
+   "files_read": [
+    "C:\\Users\\john\\AppData\\Local\\Temp\\claude\\29abb69cf93759cc\\6e663357-a31a-4ba6-8531-4cc58f56fb29\\scratchpad\\cold\\cold_wrong\\.state\\STATE.md"
+   ],
+   "answers": [
+    "7070",
+    "/tmp/x.log",
+    "make run",
+    "pytest (pytest -q)",
+    "Ana",
+    "unknown",
+    "unknown"
+   ]
+  },
+  {
+   "fx": "cold_wrong",
+   "i": 1,
+   "hits": 7,
+   "peeked": 0,
+   "state_only": true,
+   "files_read": [
+    "C:\\Users\\john\\AppData\\Local\\Temp\\claude\\29abb69cf93759cc\\6e663357-a31a-4ba6-8531-4cc58f56fb29\\scratchpad\\cold\\cold_wrong\\.state\\STATE.md"
+   ],
+   "answers": [
+    "7070",
+    "/tmp/x.log",
+    "make run",
+    "pytest (pytest -q)",
+    "Ana",
+    "unknown",
+    "unknown"
+   ]
+  },
+  {
+   "fx": "cold_wrong",
+   "i": 2,
+   "hits": 7,
+   "peeked": 0,
+   "state_only": true,
+   "files_read": [
+    "C:\\Users\\john\\AppData\\Local\\Temp\\claude\\29abb69cf93759cc\\6e663357-a31a-4ba6-8531-4cc58f56fb29\\scratchpad\\cold\\cold_wrong\\.state\\STATE.md"
+   ],
+   "answers": [
+    "7070",
+    "/tmp/x.log",
+    "make run",
+    "pytest",
+    "Ana",
+    "unknown",
+    "unknown"
+   ]
+  }
+ ],
+ "skeptics": [
+  {
+   "lens": "gate and contracts",
+   "refuted": true,
+   "findings": [
+    {
+     "where": "split_tag / FILE_LINE_RE",
+     "case": "split_tag('fact','127.0.0.1:8080') and 'http://example.com:80/x' and 'ver 3.13:5' all return SRC",
+     "why": "Host:port, IP:port and version:number match the file:line pattern, so unverified facts get [SRC] instead of [ø].",
+     "severity": "high"
+    },
+    {
+     "where": "split_tag / FILE_LINE_RE",
+     "case": "evidence 'README.md#L9' or 'src/app.py line 3' returns ø",
+     "why": "Common real source pointers (GitHub #L9, 'line N') are not recognised, so these facts are under-tagged as unknown.",
+     "severity": "low"
+    },
+    {
+     "where": "item_met",
+     "case": "item 'v1.2' met by message 'v1.2.3'; item 'port 8080' met by 'port 8080 is wrong'",
+     "why": "Lookaround uses \\w, so '.' counts as a boundary. Prefix versions and negated or contradicting statements still satisfy the gate.",
+     "severity": "high"
+    },
+    {
+     "where": "item_met",
+     "case": "item 'use py' vs confirmed claim 'Use py.' returns False",
+     "why": "Exact match after norm ignores trailing punctuation, so a legitimate confirmed claim with a final period does not meet the requires item.",
+     "severity": "low"
+    }
+   ]
+  },
+  {
+   "lens": "regenerate, provenance and file writes",
+   "refuted": true,
+   "findings": [
+    {
+     "where": "item_met",
+     "case": "requires ['8080'], message 'do not use 8080' -> True",
+     "why": "Whole-phrase match still counts negated or incidental mentions as 'stated'; the negation false-positive the fix claims to remove remains for short items.",
+     "severity": "low"
+    },
+    {
+     "where": "item_met",
+     "case": "requires ['port 8080'], confirmed claim 'Port 8080.' (trailing period), message '' -> False",
+     "why": "Exact normalised equality is brittle: punctuation or wording differences leave a genuinely confirmed claim unmet, so the skill never loads.",
+     "severity": "low"
+    },
+    {
+     "where": "split_tag / FILE_LINE_RE",
+     "case": "split_tag('x','example.com:8080') and split_tag('x','10.0.0.1:80 timeout') -> ('SRC','x')",
+     "why": "Host:port or IP:port evidence matches the file:line regex; untagged facts are falsely promoted to [SRC].",
+     "severity": "high"
+    },
+    {
+     "where": "split_tag / FILE_LINE_RE",
+     "case": "split_tag('x','Makefile:12') -> ('ø','x')",
+     "why": "Pointers to extensionless files (Makefile, Dockerfile, LICENSE) are rejected, so a legitimately seen-in-source fact is tagged [ø].",
+     "severity": "low"
+    }
+   ]
+  }
+ ],
+ "questions": [
+  "What TCP port should a client connect to?",
+  "Where does the service write its log output?",
+  "Give the exact command that starts the app.",
+  "Which test framework does the project use?",
+  "Who should be asked about a deployment?",
+  "What is the database connection string?",
+  "Which cloud region is production deployed in?"
+ ]
+}

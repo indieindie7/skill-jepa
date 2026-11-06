@@ -1,0 +1,62 @@
+{
+ "s1": {
+  "claims": 6,
+  "unbacked": 6,
+  "ok": false,
+  "problems": [
+   "1 STATE claim lines off-grammar",
+   "first standing question is not 'How do I open X?'",
+   "6 STATE claims with no LOG line"
+  ],
+  "unbacked_claims": [
+   "Start with `py -3.13 src/app.py` from repo root (Python 3.13, stdlib only)",
+   "Listens on 127.0.0.1:9090; port comes from config/app.toml, default 8080 only if the file is absent",
+   "Configured log path is var/log/lanterna.log (relative to repo root)",
+   "app.py has no code using the log path; real output is access lines on stderr/console, so the log file may never exist",
+   "Deploy: `scripts/deploy.ps1 -Env prod`, owner Rui (ops), secrets from ops vault, none in repo",
+   "Whether the service actually runs and where logs really land"
+  ],
+  "unbacked_after_impl_regen": 0
+ },
+ "s3": {
+  "claims": 3,
+  "unbacked": 3,
+  "ok": false,
+  "problems": [
+   "1 malformed LOG lines",
+   "2 STATE claim lines off-grammar",
+   "3 STATE claims with no LOG line"
+  ],
+  "unbacked_claims": [
+   "Log path var/log/lanterna.log",
+   "Deploy owner Rui (ops); secrets from ops vault, never in repo",
+   "Actual runtime port not observed"
+  ],
+  "unbacked_after_impl_regen": 0
+ },
+ "s5": {
+  "claims": 4,
+  "unbacked": 1,
+  "ok": false,
+  "problems": [
+   "1 malformed LOG lines",
+   "1 STATE claims with no LOG line"
+  ],
+  "unbacked_claims": [
+   "prod vault token / DB password value"
+  ],
+  "unbacked_after_impl_regen": 0
+ },
+ "s6": {
+  "claims": 2,
+  "unbacked": 1,
+  "ok": false,
+  "problems": [
+   "1 STATE claims with no LOG line"
+  ],
+  "unbacked_claims": [
+   "service listens on port 9090"
+  ],
+  "unbacked_after_impl_regen": 0
+ }
+}
