@@ -63,7 +63,7 @@ def s4(root, a):
     for name in ("log-reader", "deployer", "port-checker"):
         try:
             c = al.parse_contract(al.read_text(os.path.join(root, "skills", name, "SKILL.md")))
-            expect[name] = al.gate(c, conf, msg)[0]
+            expect[name] = al.gate_v1(c, conf, msg)[0]
         except al.ContractError as e:
             expect[name] = False
             expect[name + "_error"] = str(e)[:80]

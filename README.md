@@ -203,8 +203,16 @@ Majority class .222. The record split is what a re-run sees (other failures of t
 ## 11-05 keep-or-drop verdict (frozen holdout `data/holdout.jsonl`, n_lab 400 / n_none 837)
 The learned embedding head (A11-A18) never beat the hand router + session-history table on hit1/hit3 (X1 .603/.785 vs X3 .632/.815, SE ~.024). As a live abstain gate it passed a mis-specified bar (acc_abst .728 at fr_none .055) while routing only 42 % of labeled prompts, and a live probe abstained on canonical skill phrases ("convert this movie folder to hevc", A0 score 3.42). Hybrid gates (head | A0 top >= F) failed every F. Nothing promoted: opsd keeps the BM25+prior router with the NOMATCH .35 rule; the head stays shadow-logged (route.log col 8, `AVB_GATE = False`). Scripts: `ablate_20261105.py`, `live_gate_20261105.py`, `lr_gate_holdout_20261105.py`, `a6c_shadow_judge.py`, `a14_gate_fit.py`; details in SELFIMPROVE_PLAN.md.
 
-## astate-lite skill (2026-11-06)
+## astate-lite skill (2026-11-06, v2.2 + Tripwire 2026-11-10)
 `astate-lite/`: a Claude Code skill (USER / PROJECT / TASK capsules, append-only LOG + derived STATE, deterministic skill gate)
-with its reference impl `astate-lite/tests/astate_lite.py` (`regen` / `check` / `gate`), a 78-test unit + stress suite, Sonnet
+with its reference impl `astate-lite/tests/astate_lite.py` (`regen` / `check` / `gate`), a 100-test unit + stress suite, Sonnet
 dogfood and budget runs, and the gate bench against the frozen holdout. Report with an index at the top: `astate-lite/tests/TESTS.md`.
 Sibling of `astate.py` (the claim store); the skill text is kept verbatim from the user's page notes.
+2026-11-10: skill text and impl moved to v2.2 (print edition, `astate-lite/tree/v22-print.md`; v1 LOG/STATE lines still read).
+Tripwire (`astate-lite/tree/tripwire-print.md`, built parts in s3 and s3b): `astate-lite/hooks/tripwire.py` = mid-task steer
+notes (PreToolUse / PostToolUse / Stop hooks: inject at the first matching edit, hold "done" until applied or waived);
+`astate-lite/hooks/tripwire_dispatch.py` = UserPromptSubmit dispatcher (stop words and file overlap by script, an embedding
+model on 127.0.0.1:8084 sorts steer / new task / status / cancel / remark, anything unsure goes to the main model).
+Checks: `tests/tripwire_eval.py` 9 of 9 cases; `tests/tripwire_bench.py` 44 of 50 on a 50-message set written by the model,
+not real user messages (2 of 30 clear messages sorted into the wrong class, no cancel mis-sorted). Not built: parallel read
+workers, step 3. No week of real-use numbers yet.

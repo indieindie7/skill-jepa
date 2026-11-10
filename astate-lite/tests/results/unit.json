@@ -1,8 +1,8 @@
 {
- "tests": 78,
+ "tests": 100,
  "failures": 0,
  "errors": 0,
- "seconds": 5.11,
+ "seconds": 3.81,
  "stress": {
   "idempotence_15_cycles": {
    "cycles": 15,
@@ -11,23 +11,23 @@
    "cycles_with_change": 7
   },
   "cap_400_claims": {
-   "kept": 61,
-   "dropped": 339,
-   "tokens": 1971,
-   "confirmed_lost": 39
+   "kept": 95,
+   "dropped": 305,
+   "tokens": 1991,
+   "confirmed_lost": 5
   },
   "regen_100k_lines": {
-   "seconds": 0.37,
+   "seconds": 0.29,
    "distinct_claims": 20000,
-   "kept": 79,
-   "dropped": 19777
+   "kept": 143,
+   "dropped": 19713
   },
   "concurrent_8x500_appends": {
    "unlocked": {
-    "lines": 3271,
-    "lost": 729,
-    "parsed": 3239,
-    "torn": 4,
+    "lines": 3215,
+    "lost": 785,
+    "parsed": 3193,
+    "torn": 3,
     "proc_errors": 0
    },
    "locked": {
@@ -37,14 +37,14 @@
     "torn": 0,
     "proc_errors": 0
    },
-   "seconds": 2.65
+   "seconds": 1.78
   },
   "contract_fuzz_5k": {
    "accepted": 0,
    "rejected": 5000
   },
   "gate_2000_contracts": {
-   "seconds": 0.781,
+   "seconds": 0.664,
    "loaded": 383
   },
   "fuzz_10k_lines": {
@@ -52,8 +52,8 @@
    "rejected": 10000
   },
   "mutation_fuzz_5k": {
-   "still_parses": 2034,
-   "rejected": 2966
+   "still_parses": 2133,
+   "rejected": 2867
   }
  },
  "failed": []

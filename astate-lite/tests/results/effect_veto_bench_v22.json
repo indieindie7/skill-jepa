@@ -1,0 +1,158 @@
+{
+ "n_rows": 1237,
+ "skills": {
+  "mod-release": {
+   "requires": [
+    "release"
+   ],
+   "routed": 23,
+   "false": 23,
+   "false_blocked": 23,
+   "true": 0,
+   "true_blocked": 0,
+   "examples": [
+    "F- lets publish all our findings today",
+    "F- push please",
+    "F- push please",
+    "F- install please",
+    "F- ok lets work towards the wall destruction and bootmarks. for the armour just write a doc .md about it and lets",
+    "F- push please",
+    "F- push them please",
+    "F- yes start days 4-5 and push them please",
+    "F- push them please",
+    "F- start days 6-7 and push them please",
+    "F- push them please",
+    "F- push them please",
+    "F- yes start days 4-5 and push them please",
+    "F- push them please",
+    "F- start days 6-7 and push them please",
+    "F- push them please",
+    "F- yes re-zip the release. and imma rename the mod to GoreOverhaul",
+    "F- now lets fill this <pasted_content id=\"bc83\"> Description Describe the main purpose of your mod Installation i",
+    "F- wait does goreoverhaul also encompass the graphics mod?",
+    "F- bake a graphics only mod and a gore only mod zip files for nexus only",
+    "F- now regenerate the description for the graphics mod too",
+    "F- now regenerate the description for the graphics mod too",
+    "F- push them all too pelase"
+   ]
+  },
+  "advent-test-launch": {
+   "requires": [
+    "launch"
+   ],
+   "routed": 14,
+   "false": 14,
+   "false_blocked": 14,
+   "true": 0,
+   "true_blocked": 0,
+   "examples": [
+    "F- high lets continue testing",
+    "F- also try to see if you can close my game and launch it through steam",
+    "F- also try to see if you can close my game and launch it through steam",
+    "F- also try to see if you can close my game and launch it through steam",
+    "F- also try to see if you can close my game and launch it through steam",
+    "F- the dreamsplat is real good i love it. ask for advent chat for its full material work, specially regarding sus",
+    "F- why are you doing the house interior now? we are doing the outside still",
+    "F- steam not opening",
+    "F- steam still not opening",
+    "F- btw steam still not working, just google for answers. can you pplease remove the definitely stuff too? the bro",
+    "F- hook up it to always run on advent launch",
+    "F- yes launch it",
+    "F- launch it, i'll play the end fight",
+    "F- oh i meant, more graphical things for us to test bringing to advent horizon? also can you please research voxe"
+   ]
+  },
+  "wake-chats": {
+   "requires": [
+    "message"
+   ],
+   "routed": 31,
+   "false": 31,
+   "false_blocked": 31,
+   "true": 0,
+   "true_blocked": 0,
+   "examples": [
+    "F- ok tell the windows support chat it passed",
+    "F- yes send the plan to scorcher chat please",
+    "F- wake up hidrophobia chat please",
+    "F- so did we align the best token saving practices with all those chats?",
+    "F- let hydrophobia go first, its only 25 min, also after that we are going to focus on just 2 chats, finishing de",
+    "F- ok, lol. lets do 2 things now, first solve the monitor. second, startup the localhosted fuzzy token code to au",
+    "F- if i try quitting claude it will stop everything. tell other chats to halt/pause",
+    "F- we should also make that whenever a new chat is created, it auto greets you and asks for the work schemas",
+    "F- ok, so change the normal avalon to have the generated avalon but till with the cinematics and the whole normal",
+    "F- the referenced i would send here or ingame terminal?",
+    "F- ok, so change the normal avalon to have the generated avalon but till with the cinematics and the whole normal",
+    "F- morning, lets wake up the pair and let them run autonomously with 1 hour breaks for you to review",
+    "F- send this to hydrophobia chat olease https://youtu.be/ok1ViHVcXYs?is=B3KguDI3UxGmFyyK",
+    "F- make the 2 strata think high. and let chat make them be like a small group chat where they both talk to me and",
+    "F- morning can you please wake up avalon chat i dont see it on mobile",
+    "F- yes, build the gate router (zero-shot for new chats, jepa once a chat has history)",
+    "F- ok lets push it please and send it to scorcher chat",
+    "F- did you send the powerdrift stuff to scorcher chat too",
+    "F- could we look at their code and see if we could optimize ours from theirs?",
+    "F- please spin up a new chat called sega saturn modding",
+    "F- please spin up a new chat called sega saturn modding",
+    "F- ok, spin up a new chat called hydrophobia modding",
+    "F- did hydrophobia chat send you a message?",
+    "F- did hydrophobia chat send you a message?",
+    "F- lets draft an email to send for Epic. and tell me the address also, i will prob be ignored but either way",
+    "F- push all code so far",
+    "F- and send a new document of gore and destruction to avalon chat please",
+    "F- just send avalon all of the data you have. we will think about it in that chat",
+    "F- and send a new document of gore and destruction to avalon chat please",
+    "F- just send avalon all of the data you have. we will think about it in that chat",
+    "F- also btw, we gonna archive this chat. write up our discoveries and work and push our code to our public repo o"
+   ]
+  },
+  "convert-movie": {
+   "requires": [
+    "convert"
+   ],
+   "routed": 8,
+   "false": 8,
+   "false_blocked": 8,
+   "true": 0,
+   "true_blocked": 0,
+   "examples": [
+    "F- convert them to blender so i can look at them",
+    "F- <pasted_content id=\"289b\"> PS C:\\WINDOWS\\system32> powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\Use",
+    "F- <pasted_content id=\"289b\"> Windows PowerShell Copyright (C) Microsoft Corporation. All rights reserved. PS C:\\",
+    "F- give me a powershell command that forces going to bios on restart please",
+    "F- ok its there, and i placed the usb drive too",
+    "F- <pasted_content id=\"289b\"> PS C:\\Windows\\system32> powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\Use",
+    "F- we should start transforming skilltrres into latent space vectors",
+    "F- btw in documents/goobiscans theres lots of pdfs, can you convert them to jpgs please?"
+   ]
+  },
+  "pc-cleanup": {
+   "requires": [
+    "clean"
+   ],
+   "routed": 10,
+   "false": 10,
+   "false_blocked": 10,
+   "true": 0,
+   "true_blocked": 0,
+   "examples": [
+    "F- and the tecompilations to rust will be like if its the cases of dead comoanies like zyrinx or like completely ",
+    "F- lets just note them for now and move on",
+    "F- also i have question, what if we did the clonezilla or like installed a fresh windows install in the new nvme?",
+    "F- also disable the flamethrower in all levels",
+    "F- also disable the flamethrower in all levels",
+    "F- i think token is free",
+    "F- can we try fire and move leaving from some windows and broken roofs?",
+    "F- delete the stuff from leaked stuff we gonna be respectful",
+    "F- would the jiggle make the armour jiggle too? i only want the armour to move from the bone relation",
+    "F- lots of the talks ended up free on youtube"
+   ]
+  }
+ },
+ "total": {
+  "routed": 86,
+  "false": 86,
+  "false_blocked": 86,
+  "true": 0,
+  "true_blocked": 0
+ }
+}

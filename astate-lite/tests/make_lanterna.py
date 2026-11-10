@@ -187,7 +187,7 @@ def _s7_lines():
         lines.append(L(date(), "event", f"[SRC] fact-{i} is v{i}", f"src/mod{i}.py:{i + 3}", st))
         day += 1
     lines.append(L(date(), "blocker", "vault token missing for prod deploy", "Rui", "confirmed"))   # closed
-    lines.append(al.metric_line(date(), 1, 1500, 4))
+    lines.append(al.metric_line(date(), 1, 0, 4))
     while len(lines) < 300:
         i = rnd.randrange(40)
         lines.append(L(date(), "event", f"[SRC] fact-{i} is v{i}", f"src/mod{i}.py:{i + 3}", "confirmed" if i % 4 else "unknown"))

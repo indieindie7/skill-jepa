@@ -2,11 +2,9 @@
 name:
 description:
 metadata:
-  requires:    # every item a confirmed STATE claim or stated by the user
-  reads:       # files or state it only reads
-  produces:    # artifacts or claims it writes
-  effects:     # sends, process execution, file writes
-  conflicts:   # skills or effects it must not run alongside
+  requires:    # the skill acts only if the user asked for it, or a confirmed claim in STATE requires it
+    - <e.g. repository_path>
+    - <e.g. page_access_method>
+  effects:     # side effects the user must have authorised: sends, process execution, file writes
+    - <…>
 ---
-
-Front matter with name, description, requires (every item a confirmed STATE claim or stated by the user), reads (files or state it only reads), produces (artifacts or claims it writes), effects (sends, process execution, file writes), conflicts (skills or effects it must not run alongside). In a real Cowork skill these five keys sit under `metadata:` or the loader rejects the skill.

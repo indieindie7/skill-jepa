@@ -29,7 +29,7 @@ Round 2 11-06 (s10): s8 items 5-10 run; budget abstention 3/3 Sonnet sessions (b
 findings + 2 append_log lock bugs fixed; 78 tests green; the gate bench rerun with CIs leaves the s4 verdict as it was.
 
 ## 2. Harness
-All in C:\Users\john\.claude\skills\astate-lite\tests\ (SKILL.md wording was never edited):
+All in ~/.claude/skills/astate-lite/tests/ (SKILL.md wording was never edited):
 - astate_lite.py (~730 lines): reference impl. CLI `regen <log> <state> [--project X] [--date D]`, `check <root>`, `gate <contract> <state> <message>`.
 - test_astate_lite.py (~730): 78 unittest tests (Grammar, Regen, Gate, Files, Fixes, Skeptics, Stress, Round2, Round2Skeptics, Gap11) -> results/unit.json.
 - gate_bench.py (97): gate variants vs skilljepa/data/holdout.jsonl -> results/gate_bench.json.
@@ -233,3 +233,17 @@ class Round2Skeptics. Held: order independence, self-clash, a failing candidate 
 in paths, empty files, mid-file BOM.
 Not covered: two appenders on a non-UTF-8 LOG; a UTF-16 run that starts after the first 8 KB and ends before the last 8 KB is
 not sniffed; no session read a USER capsule (check only). GAP-11 mitigated 11-06 by the TASK template note (class Gap11; sessions not re-run); skill text still frozen.
+
+## 11. v2.2 round 11-10 (backups tests/*.bak-1110v22)
+- Unit: `py -3.13 -I -X utf8 test_astate_lite.py` -> 100 tests OK (78 kept, 4 of them moved to v2.2 strings, + class V22 with 22).
+- `astate_lite.py check ~/Documents/Tools/ops` -> ok true, problems [], state_tokens 1674, state_claims 28.
+- effect_veto_bench.py: v1 gate routed 86, false_blocked 74, true rows 0; `--v22` (skill must be named; effects taken as authorised) false_blocked 86 of 86, true rows 0 -> cost on true loads UNMEASURED (results/effect_veto_bench_v22.json).
+- gate_bench.py ran without error (numbers not compared); dogfood_check.py not rerun (calls gate_v1).
+- Tripwire hook: scratchpad test_tripwire.py 10 of 10; live inject, --block and touched log seen in the building chat.
+- Not tested: v2.2 gate on real routed prompts with true loads; cold test under v2.2 templates.
+
+## 12. Tripwire measurement 11-10 (print page 2, sharp photo; text in tree/tripwire-print.md s2)
+- `py -3.13 -I -X utf8 tripwire_eval.py` -> 4 of 4 step-1 cases pass both directions; 5 of 9 need the dispatcher (step 2).
+- Weekly line extended: `astate_metric.py --log` on a scratch LOG -> `rediscoveries=7 wrong_state=0 cold_test=5/5 tw_applied=1 tw_missed=0 tw_false_inj=1/2 tw_bar=n<5`.
+- Bars fixed before the first run (ours): tw_missed = 0, false injections <= 20 % of injections, judged from 5 injections up.
+- Fixed 11-10: astate_metric.py --log had not appended since the morning edit (statement swallowed by a comment); both paths rerun.

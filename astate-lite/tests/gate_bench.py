@@ -9,7 +9,9 @@ Writes results/gate_bench.json."""
 import json, os, sys, re, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SJ = r"C:\Users\john\Documents\Tools\skilljepa\data"
+SJ = os.path.join(os.path.dirname(os.path.dirname(HERE)), "data")          # inside the skill-jepa repo
+if not os.path.isdir(SJ):
+    SJ = os.path.expanduser("~/Documents/Tools/skilljepa/data")
 rows = [json.loads(l) for l in open(os.path.join(SJ, "holdout.jsonl"), encoding="utf-8")]
 idx = json.load(open(os.path.join(SJ, "a0_index.json"), encoding="utf-8"))
 skills = idx["skills"]

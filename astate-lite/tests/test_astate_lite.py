@@ -35,7 +35,9 @@ def contract(name="demo", requires=("port is 8080",), reads=(), produces=(), eff
 class Grammar(unittest.TestCase):
     def test_claim_roundtrip(self):
         c = {"tag": "SRC", "text": "opsd listens on 8765", "status": "confirmed", "evidence": "opsd.py:12", "since": D}
-        self.assertEqual(al.parse_claim(al.render_claim(c)), c)
+        self.assertEqual(al.parse_claim(al.render_claim_v1(c)), c)
+        c22 = al.parse_claim(al.render_claim(c))            # v2.2: claim, status, pointer; no tag, no since
+        self.assertEqual(c22, {"tag": None, "text": c["text"], "status": "confirmed", "evidence": "opsd.py:12", "since": None})
 
     def test_claim_needs_em_dash(self):
         self.assertIsNone(al.parse_claim(f"- [SRC] x - status: confirmed - evidence: y - since: {D}"))
@@ -103,7 +105,8 @@ class Regen(unittest.TestCase):
         ps = al.parse_state(text)
         self.assertEqual(len(ps["claims"]), 2)
         self.assertEqual(len(ps["conflicts"]), 1)
-        self.assertTrue(al.CONFLICT_RE.match(ps["conflicts"][0]))
+        self.assertTrue(ps["conflicts"][0].startswith("- conflict: "))      # v2.2: inside the Claims list
+        self.assertTrue(al.CONFLICT_RE.match(ps["conflicts"][0][2:]))
 
     def test_drop_removes(self):
         es = [L("event", "[SRC] old fact"), L("decision", "drop: old fact")]
@@ -139,7 +142,8 @@ class Regen(unittest.TestCase):
         es = [L("event", f"[SRC] fact {i}", st=s) for i, s in enumerate(("confirmed", "hypothesis", "unknown"))]
         text, _ = al.regenerate(es, "p", D)
         ps = al.parse_state(text)
-        self.assertEqual([c["status"] for c in ps["claims"]], ["confirmed", "hypothesis", "unknown"])
+        # v2.2 has no `unknown` claim status: not checked in this project = hypothesis
+        self.assertEqual([c["status"] for c in ps["claims"]], ["confirmed", "hypothesis", "hypothesis"])
         self.assertEqual(ps["bad_claims"], [])
 
     def test_cap_drop_order(self):
@@ -170,27 +174,27 @@ class Regen(unittest.TestCase):
 class Gate(unittest.TestCase):
     def test_met_by_claim(self):
         c = al.parse_contract(contract(requires=("port is 8080",)))
-        self.assertEqual(al.gate(c, ["port is 8080"], "do the thing"), (True, []))
+        self.assertEqual(al.gate_v1(c, ["port is 8080"], "do the thing"), (True, []))
 
     def test_met_by_message(self):
         c = al.parse_contract(contract(requires=("port is 8080",)))
-        self.assertEqual(al.gate(c, [], "the Port is 8080, go")[0], True)
+        self.assertEqual(al.gate_v1(c, [], "the Port is 8080, go")[0], True)
 
     def test_unmet_and_partial(self):
         c = al.parse_contract(contract(requires=("port is 8080", "db is sqlite")))
-        self.assertEqual(al.gate(c, ["port is 8080"], ""), (False, ["db is sqlite"]))
-        self.assertEqual(al.gate(c, [], ""), (False, ["port is 8080", "db is sqlite"]))
+        self.assertEqual(al.gate_v1(c, ["port is 8080"], ""), (False, ["db is sqlite"]))
+        self.assertEqual(al.gate_v1(c, [], ""), (False, ["port is 8080", "db is sqlite"]))
 
     def test_only_confirmed_counts(self):
         c = al.parse_contract(contract(requires=("port is 8080",)))
         state = al.regenerate([L("event", "[SRC] port is 8080", st="hypothesis")], "p", D)[0]
-        self.assertFalse(al.gate(c, al.confirmed_claims(state), "")[0])
+        self.assertFalse(al.gate_v1(c, al.confirmed_claims(state), "")[0])
         state = al.regenerate([L("event", "[SRC] port is 8080", st="confirmed")], "p", D)[0]
-        self.assertTrue(al.gate(c, al.confirmed_claims(state), "")[0])
+        self.assertTrue(al.gate_v1(c, al.confirmed_claims(state), "")[0])
 
     def test_empty_requires_blocked(self):
         c = al.parse_contract(contract(requires=()))
-        self.assertFalse(al.gate(c, [], "anything")[0])       # GAP-8 fixed
+        self.assertFalse(al.gate_v1(c, [], "anything")[0])       # GAP-8 fixed
 
     def test_contract_rejections(self):
         for bad, why in ((contract(under_metadata=False), "top-level keys"), (contract(drop_key="effects"), "missing key"),
@@ -213,10 +217,10 @@ class Gate(unittest.TestCase):
         a = al.parse_contract(contract("a", requires=("go",), effects=("sends mail",)))
         b = al.parse_contract(contract("b", requires=("go",), conflicts=("a",)))
         c = al.parse_contract(contract("c", requires=("go",), conflicts=("sends mail",)))
-        r = al.gate_many([a, b, c], [], "go")
+        r = al.gate_many_v1([a, b, c], [], "go")
         self.assertEqual([x["load"] for x in r], [False, False, False])
         self.assertTrue(all("ask the user" in x["why"] for x in r))
-        self.assertEqual([x["load"] for x in al.gate_many([b, a], [], "go")], [False, False])
+        self.assertEqual([x["load"] for x in al.gate_many_v1([b, a], [], "go")], [False, False])
 
 
 class Files(unittest.TestCase):
@@ -292,7 +296,7 @@ class Fixes(unittest.TestCase):
 
     def test_empty_requires_never_loads(self):               # GAP-8
         c = al.parse_contract(contract(requires=()))
-        self.assertEqual(al.gate(c, ["x"], "anything"), (False, ["requires is empty"]))
+        self.assertEqual(al.gate_v1(c, ["x"], "anything"), (False, ["requires is empty"]))
 
     def test_provenance_exact(self):                         # s8 item 3
         es = [L("event", "[SRC] port is 8080")]
@@ -401,7 +405,7 @@ class Stress(unittest.TestCase):
         cs = [al.parse_contract(contract(f"s{i}", requires=(f"needs {i}", f"needs {i % 7}"))) for i in range(2_000)]
         claims = [f"needs {i}" for i in range(0, 2_000, 3)]
         t0 = time.perf_counter()
-        r = al.gate_many(cs, claims, "needs 5")
+        r = al.gate_many_v1(cs, claims, "needs 5")
         STRESS["gate_2000_contracts"] = {"seconds": round(time.perf_counter() - t0, 3), "loaded": sum(x["load"] for x in r)}
 
     def _appenders(self, lp, lock):
@@ -530,13 +534,13 @@ class Round2(unittest.TestCase):
         c = al.parse_contract(contract("c", requires=("go",), conflicts=("sends mail",)))
         d = al.parse_contract(contract("d", requires=("go",)))
         for order in ([a, b, c, d], [d, c, b, a], [b, a, d, c]):
-            r = {x["name"]: x for x in al.gate_many(order, [], "go")}
+            r = {x["name"]: x for x in al.gate_many_v1(order, [], "go")}
             self.assertEqual({n: r[n]["load"] for n in "abcd"}, {"a": False, "b": False, "c": False, "d": True})
             self.assertTrue(all("ask the user" in r[n]["why"] for n in "abc"))
             self.assertIsNone(r["d"]["why"])
         b2 = al.parse_contract(contract("b", requires=("never",), conflicts=("a",)))      # a failing candidate holds nobody out
-        self.assertEqual([x["load"] for x in al.gate_many([a, b2], [], "go")], [True, False])
-        self.assertEqual([x["load"] for x in al.gate_many([b2, a], [], "go")], [False, True])
+        self.assertEqual([x["load"] for x in al.gate_many_v1([a, b2], [], "go")], [True, False])
+        self.assertEqual([x["load"] for x in al.gate_many_v1([b2, a], [], "go")], [False, True])
 
     # item 8 ---------------------------------------------------------------
     def test_encodings_never_crash(self):
@@ -590,12 +594,12 @@ class Round2(unittest.TestCase):
 
     def test_gate_ptbr_and_5k_message(self):
         c = al.parse_contract(contract("pt", requires=("configuração do deploy",)))
-        self.assertTrue(al.gate(c, [], "A configuração do deploy está pronta.")[0])
-        self.assertTrue(al.gate(c, ["Configuração do deploy"], "")[0])
-        self.assertFalse(al.gate(c, [], "configuracao do deploy pronta")[0])         # accents are not folded: exact rule (spec limit)
+        self.assertTrue(al.gate_v1(c, [], "A configuração do deploy está pronta.")[0])
+        self.assertTrue(al.gate_v1(c, ["Configuração do deploy"], "")[0])
+        self.assertFalse(al.gate_v1(c, [], "configuracao do deploy pronta")[0])         # accents are not folded: exact rule (spec limit)
         filler = "palavra " * 625                                                   # 5,000 characters
-        self.assertTrue(al.gate(c, [], filler + "configuração do deploy")[0])
-        self.assertFalse(al.gate(c, [], filler + "configuração do build")[0])
+        self.assertTrue(al.gate_v1(c, [], filler + "configuração do deploy")[0])
+        self.assertFalse(al.gate_v1(c, [], filler + "configuração do build")[0])
 
 
 class Round2Skeptics(unittest.TestCase):
@@ -688,8 +692,8 @@ class Round2Skeptics(unittest.TestCase):
         a = al.parse_contract(contract("A", requires=("go",), effects=("Sends Mail.",)))
         b = al.parse_contract(contract("b", requires=("go",), conflicts=("a",)))
         c = al.parse_contract(contract("c", requires=("go",), conflicts=("sends mail",)))
-        self.assertEqual([x["load"] for x in al.gate_many([a, b, c], [], "go")], [False, False, False])   # was: all three loaded
-        self.assertTrue(all("ask the user" in x["why"] for x in al.gate_many([c, a], [], "go")))
+        self.assertEqual([x["load"] for x in al.gate_many_v1([a, b, c], [], "go")], [False, False, False])   # was: all three loaded
+        self.assertTrue(all("ask the user" in x["why"] for x in al.gate_many_v1([c, a], [], "go")))
 
     def test_tokens_count_cjk_per_char(self):
         self.assertEqual(al.tokens("a" * 400), 100)
@@ -707,14 +711,154 @@ class Gap11(unittest.TestCase):
     def test_blocker_note_in_template_and_capsule(self):
         tpl = Path(HERE, "..", "templates", "TASK.md").read_text(encoding="utf-8")
         cap = al.task_capsule("find the port", "port in STATE", D, frontier=("read README",), blockers=("need a docs/ops pointer",))
-        for text in (tpl, cap):
-            self.assertIn(al.BLOCKER_NOTE, text)
+        for text in (tpl, cap):                 # v2.2 print: "keep the wording; add nothing", so the note left the template
+            self.assertIn("active goal:", text)
+            self.assertIn("close: append LOG", text)
             self.assertLessEqual(al.tokens(text), al.TASK_CAP)
+        self.assertIn("decides:", tpl)
         q = "stg listener port not found in 5 steps; ask the user: extend the budget or point to the file"
         self.assertIsNotNone(al.parse_log(al.render_log(D, "blocker", q, "docs/ops", "unknown"), True)[0])      # question in the what-text
         bad = f"{D} | blocker | port not found | evidence: docs/ops | status: unknown; ask user: {q}"               # the s2/s3 shape
         self.assertIsNone(al.parse_log(bad, True)[0])
         self.assertEqual(len(al.derive([L("blocker", q, "docs/ops", "unknown")])["blockers"]), 1)
+
+
+class V22(unittest.TestCase):
+    """Round 11-10: v2.2 print edition (tree/v22-print.md). v1 lines must still read."""
+
+    def test_log_decision_line(self):
+        e, err = al.parse_log("2026-11-10 08:15 | decision | use sage for reads | ops/PLAN.md:3", True)
+        self.assertIsNone(err)
+        self.assertEqual((e["type"], e["status"], e["evidence"], e["v"]), ("decision", "confirmed", "ops/PLAN.md:3", 2))
+
+    def test_log_finding_status(self):
+        e, _ = al.parse_log("2026-11-10 | finding | port is 8765 | confirmed | opsd.py:12", True)
+        self.assertEqual((e["what"], e["status"], e["evidence"]), ("port is 8765", "confirmed", "opsd.py:12"))
+        e, _ = al.parse_log("2026-11-10 | finding | port is 8765 | opsd.py:12", True)
+        self.assertEqual(e["status"], "hypothesis")          # GAP-12: no status given = not checked
+
+    def test_log_bar_inside_what(self):
+        e, _ = al.parse_log("2026-11-10 | decision | pick a | b over c | notes.md:4", True)
+        self.assertEqual((e["what"], e["evidence"]), ("pick a | b over c", "notes.md:4"))
+
+    def test_log_v1_still_reads(self):
+        e, _ = al.parse_log(al.render_log(D, "event", "[SRC] x", "a.py:1", "unknown"), True)
+        self.assertEqual((e["status"], e["v"]), ("unknown", 1))
+
+    def test_log_rejects_three_fields_and_bad_type(self):
+        self.assertIsNone(al.parse_log("2026-11-10 | decision | no pointer", True)[0])
+        self.assertIsNone(al.parse_log("2026-11-10 | note | x | y", True)[0])
+        self.assertIsNone(al.parse_log("2026-11-10 25h | decision | x | y", True)[0])
+
+    def test_finding_becomes_claim(self):
+        es = [al.parse_log("2026-11-10 | finding | port is 8765 | confirmed | opsd.py:12", True)[0],
+              al.parse_log("2026-11-10 | finding | cache lives in tmp | notes.md:2", True)[0]]
+        text, _ = al.regenerate(es, "p", D)
+        self.assertIn(f"- port is 8765 {EM} confirmed {EM} opsd.py:12", text)
+        self.assertIn(f"- cache lives in tmp {EM} hypothesis {EM} notes.md:2", text)
+        self.assertEqual(al.confirmed_claims(text), ["port is 8765"])
+
+    def test_checkpoint_line(self):
+        line = al.checkpoint_line("2026-11-10 09:00", "2026-11-09")
+        e, err = al.parse_log(line, True)
+        self.assertIsNone(err)
+        self.assertEqual(al.derive([e])["checkpoint"], "2026-11-10 09:00")
+        self.assertEqual(al.derive([e])["claims"], {})
+
+    def test_metric_line_v22(self):
+        e, err = al.parse_log(al.metric_line(D, 1, 0, 4), True)
+        self.assertIsNone(err)
+        self.assertEqual(e["metric"], {"rediscoveries": 1, "wrong_state": 0, "cold_test": 4})
+        long = f"{D} | metric | rediscoveries=1 wrong_state=2 cold_test=5/5 (answers checked against sources, not STATE) | weekly"
+        self.assertEqual(al.parse_log(long, True)[0]["metric"]["wrong_state"], 2)
+        self.assertIsNone(al.parse_log(f"{D} | metric | rediscoveries=1 wrong_state=2 cold_test=6/5 | weekly", True)[0])
+
+    def test_metric_due_with_time(self):
+        e = al.parse_log("2026-11-01 07:45 | metric | rediscoveries=0 wrong_state=0 cold_test=5/5 | weekly", True)[0]
+        self.assertFalse(al.metric_due([e], "2026-11-05"))
+        self.assertTrue(al.metric_due([e], "2026-11-08 10:00"))
+
+    def test_claim_grammar_v22(self):
+        c = al.parse_claim(f"- opsd listens on 8765 {EM} rejected {EM} netstat 11-09")
+        self.assertEqual((c["text"], c["status"], c["evidence"]), ("opsd listens on 8765", "rejected", "netstat 11-09"))
+        self.assertIsNone(al.parse_claim(f"- conflict: a vs b {EM} confirmed {EM} ask"))
+        self.assertIsNone(al.parse_claim(f"- x {EM} maybe {EM} y"))
+
+    def test_state_template_shape(self):
+        es = [L("event", "[SRC] fact"), L("decision", "procedure: Open p: run it"), L("decision", "question: How do I open p?")]
+        text, _ = al.regenerate(es, "p", D)
+        self.assertIn(f"(reviewed projection of LOG · last checkpoint: {D} · keep ≤", text)
+        self.assertIn(f"- Open p: run it {EM} confirmed {EM} {D}", text)
+        self.assertNotIn("Receipts:", text)
+        ps = al.parse_state(text)
+        self.assertEqual((len(ps["claims"]), len(ps["procedures"]), ps["bad_claims"]), (1, 1, []))
+
+    def test_state_template_file_parses(self):
+        tpl = Path(HERE, "..", "templates", "STATE.md").read_text(encoding="utf-8")
+        ps = al.parse_state(tpl)
+        self.assertEqual((len(ps["claims"]), len(ps["conflicts"]), ps["bad_claims"]), (3, 1, []))
+
+    def test_log_template_lines_parse(self):
+        tpl = Path(HERE, "..", "templates", "LOG.md").read_text(encoding="utf-8")
+        rows = [ln for ln in tpl.splitlines() if ln.startswith("<date time>")]
+        self.assertEqual(len(rows), 5)
+        for ln in rows:
+            ln = ln.replace("<date time>", "2026-11-10 08:00").replace("<n>", "1").replace("<k>", "4").replace("confirmed or hypothesis", "hypothesis")
+            self.assertIsNotNone(al.parse_log(ln, True)[0], ln)
+
+    def test_contract_two_keys(self):
+        c = al.parse_contract("---\nname: mailer\ndescription: d\nmetadata:\n  requires:\n    - smtp host\n  effects:\n    - sends mail\n---\nbody")
+        self.assertEqual(c["metadata"]["requires"], ["smtp host"])
+        self.assertEqual(c["metadata"]["conflicts"], [])
+        with self.assertRaises(al.ContractError):
+            al.parse_contract(contract("x", drop_key="effects"))
+
+    def test_gate_default_no_skill_acts(self):
+        c = al.parse_contract(contract("mailer", requires=("smtp host",), effects=("sends mail",)))
+        self.assertFalse(al.gate(c, [], "summarise the week")[0])
+        self.assertFalse(al.gate(c, ["smtp host"], "summarise the week", authorised=("sends mail",))[0])   # requires met is not a reason to act
+
+    def test_gate_asked_needs_effects_authorised(self):
+        c = al.parse_contract(contract("mailer", requires=("smtp host",), effects=("sends mail",)))
+        act, why = al.gate(c, [], "use mailer for the report")
+        self.assertFalse(act)
+        self.assertEqual(why, ["effect not authorised: sends mail"])
+        self.assertTrue(al.gate(c, [], "use mailer for the report", authorised=("Sends mail",))[0])
+        self.assertTrue(al.gate(c, [], "send the report out", authorised=("sends mail",), asked=True)[0])
+
+    def test_gate_name_is_whole_phrase(self):
+        c = al.parse_contract(contract("mail", requires=(), effects=()))
+        self.assertFalse(al.gate(c, [], "use mailer now")[0])
+        self.assertTrue(al.gate(c, [], "use mail now")[0])
+
+    def test_gate_claim_requires(self):
+        c = al.parse_contract(contract("mailer", requires=(), effects=()))
+        self.assertTrue(al.gate(c, ["weekly report goes out through mailer"], "do the weekly report")[0])
+        r = al.gate_report(c, ["weekly report goes out through mailer"], "do the weekly report")
+        self.assertEqual(r["basis"], 'required by claim "weekly report goes out through mailer"')
+
+    def test_gate_requires_do_not_block(self):
+        c = al.parse_contract(contract("mailer", requires=("smtp host",), effects=()))
+        r = al.gate_report(c, [], "run mailer")
+        self.assertEqual((r["act"], r["basis"], r["requires_unconfirmed"]), (True, "asked by user", ["smtp host"]))
+
+    def test_gate_many_each_alone(self):
+        a = al.parse_contract(contract("alpha", requires=(), effects=("file writes",)))
+        b = al.parse_contract(contract("beta", requires=(), effects=()))
+        rs = al.gate_many([a, b], [], "nothing named", authorised=("file writes",), asked=("beta",))
+        self.assertEqual([r["act"] for r in rs], [False, True])
+
+    def test_frontier_item_stop_rule(self):
+        self.assertEqual(al.frontier_item("read README", "which port opsd uses"), f"read README {EM} decides: which port opsd uses")
+        self.assertIsNone(al.frontier_item("poke around", " "))
+
+    def test_task_capsule_fields(self):
+        cap = al.task_capsule("fix the cap", "STATE whole after compaction", D, active_skill="compact-pipeline",
+                              frontier=(al.frontier_item("read mode_post", "where the cut happens"),))
+        for want in ("date: " + D, "active skill: compact-pipeline", "active goal: fix the cap", "decides: where the cut happens",
+                     "- <none>", "close: append LOG → checkpoint STATE"):
+            self.assertIn(want, cap)
+        self.assertNotIn("budget", cap)
 
 
 if __name__ == "__main__":

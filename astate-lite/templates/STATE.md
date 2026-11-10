@@ -1,19 +1,18 @@
 # STATE — <project>
-(regenerated from LOG on date; keep ≤ ~2k tokens)
+(reviewed projection of LOG · last checkpoint: <date> · keep ≤ ~2k tokens)
 
-Standing questions, max 5, the first being "How do I open X?" pointing to Procedures
+Standing questions:
+1. How do I open <X>? → check at: Procedures
+2. <question> → check at: <…>
 
 Claims:
-- [SRC] / [SYN] / [ø] <claim> — status — evidence — since
+- <claim> — confirmed — <path, url, message or LOG date>
+- <claim> — hypothesis — <where it came from>
+- <claim> — rejected — <what disproved it>
+- conflict: <claim A> vs <claim B> — <how to settle it>
 
-Conflicts, both sides kept:
-conflict: A vs B — sources — next
-
-Procedures, the how-to that keeps getting forgotten:
-Open X: 1-3 lines of steps
+Procedures (the "how to" that keeps getting forgotten):
+- Open <X>: <1–3 lines of steps, e.g. search tools for <name> → call <tool> with <args>> — confirmed — <LOG date>
 
 Open blockers:
-<blocker> — since — owner
-
-Receipts:
-<source> — sha256 — archived yes/no
+- <blocker> — since: <date>

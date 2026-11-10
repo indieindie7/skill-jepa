@@ -4,7 +4,8 @@ leaves a choice open, the choice made here is marked GAP-n and listed in TESTS.m
 
 CLI:  py -3.13 -I astate_lite.py regen <LOG.md> <STATE.md> [--project NAME] [--date YYYY-MM-DD]
       py -3.13 -I astate_lite.py check <dir>     (validates <dir>/.state/LOG.md + STATE.md, prints JSON report)
-      py -3.13 -I astate_lite.py gate <contract.md> <STATE.md> "<user message>"
+      py -3.13 -I astate_lite.py gate <contract.md> <STATE.md> "<user message>" [--authorised e1,e2] [--asked]
+v2.2 since 11-10 (print edition of 6 November 2026, tree/v22-print.md); v1 LOG and STATE lines are still read.
 """
 import re, hashlib, os, sys, json, time, datetime as dt
 
@@ -17,15 +18,19 @@ except ImportError:      # POSIX
 EM = "—"                      # em dash: the separator the claim grammar uses
 TAGS = ("SRC", "SYN", "ø")    # [SRC] seen in a source, [SYN] inferred, [ø] unknown / not checked
 CLAIM_STATUSES = ("confirmed", "hypothesis", "rejected", "unknown")
-LOG_TYPES = ("decision", "event", "blocker", "metric")
+LOG_TYPES = ("decision", "finding", "blocker", "checkpoint", "metric", "event")   # v2.2 types; "event" = v1, still read
+V22_DEFAULT = {"decision": "confirmed", "finding": "hypothesis", "event": "hypothesis", "blocker": "unknown",
+               "checkpoint": "confirmed", "metric": "confirmed"}   # status of a v2.2 line that carries none (GAP-12)
 LOG_STATUSES = CLAIM_STATUSES   # GAP-1 fixed 11-05: SKILL.md:38 lists rejected; only templates/LOG.md omitted it
 STATE_CAP = 2000     # tokens, "STATE <= ~2k tokens"
 TASK_CAP = 300       # tokens, "~300 tokens"
-EXPLORE_BUDGET = 5   # "explore <= 5 steps"
-DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+EXPLORE_BUDGET = 5   # v1 only: v2.2 dropped the fixed step count (stop rule: frontier_item)
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?$")   # v2.2: <date time>; the time is optional
 CLAIM_RE = re.compile(r"^- \[(SRC|SYN|ø)\] (.+?) — status: (confirmed|hypothesis|rejected|unknown) — evidence: (.+?) — since: (\S+)$")
 CONFLICT_RE = re.compile(r"^conflict: (.+?) vs (.+?) — (.+?) — (.+)$")      # "conflict: A vs B — sources — next"
-METRIC_RE = re.compile(r"^rediscoveries=(\d+) tokens_open=(\d+) cold_test=(\d+)/5$")
+METRIC_RE = re.compile(r"^rediscoveries=(\d+) tokens_open=(\d+) cold_test=(\d+)/5$")          # v1
+METRIC22_RE = re.compile(r"^rediscoveries=(\d+) wrong_state=(\d+) cold_test=(\d+)/5(?: \(.*\))?$")   # v2.2
+CLAIM22_RE = re.compile(r"^- (.+) — (confirmed|hypothesis|rejected|unknown) — (.+)$")   # v2.2: claim — status — pointer
 TAG_RE = re.compile(r"^\[(SRC|SYN|ø)\]\s*(.*)$")
 # A pointer into a source: README.md:9, src/app.py:3-9, README.md#L9, src/app.py line 3, Makefile:12. Skeptic round 11-05:
 # any '.ext:N' also matched 127.0.0.1:8080 / example.com:80 / ver 3.13:5, so the extension must be a source/doc kind.
@@ -52,54 +57,88 @@ def norm(s):
 
 # ---------------------------------------------------------------- claims (section 4)
 def parse_claim(line):
-    m = CLAIM_RE.match(line.rstrip("\r\n"))
-    if not m:
+    """v1 grammar ([tag] text — status: s — evidence: e — since: d) or v2.2 (text — status — pointer)."""
+    line = line.rstrip("\r\n")
+    m = CLAIM_RE.match(line)
+    if m:
+        tag, text, status, ev, since = m.groups()
+        return {"tag": tag, "text": text, "status": status, "evidence": ev, "since": since}
+    m = CLAIM22_RE.match(line)
+    if not m or line.lower().startswith("- conflict:"):
         return None
-    tag, text, status, ev, since = m.groups()
-    return {"tag": tag, "text": text, "status": status, "evidence": ev, "since": since}
+    return {"tag": None, "text": m[1], "status": m[2], "evidence": m[3], "since": None}
 
 
 def render_claim(c):
+    """v2.2: no IDs, tags or expiry fields. 'unknown' (v1) prints as hypothesis: not checked in this project."""
+    status = "hypothesis" if c["status"] == "unknown" else c["status"]
+    return f"- {c['text']} {EM} {status} {EM} {c['evidence']}"
+
+
+def render_claim_v1(c):
     return f"- [{c['tag']}] {c['text']} {EM} status: {c['status']} {EM} evidence: {c['evidence']} {EM} since: {c['since']}"
 
 
 # ---------------------------------------------------------------- LOG lines (template LOG.md)
 def _log_fields(raw):
     """Returns the five fields or an error string. Right split keeps a | inside 'what happened' (GAP-3: no escaping rule)."""
-    if raw.count("|") < 4:
-        return None, f"expected 5 fields separated by |, got {raw.count('|') + 1}"
+    if raw.count("|") < 3:
+        return None, f"expected 4 fields (v2.2) or 5 (v1) separated by |, got {raw.count('|') + 1}"
     date, typ, rest = [p.strip() for p in raw.split("|", 2)]
-    what, ev, st = [p.strip() for p in rest.rsplit("|", 2)]
     if not DATE_RE.match(date):
         return None, f"bad date {date!r}"
     if typ not in LOG_TYPES:
         return None, f"bad type {typ!r}"
-    if not ev.startswith("evidence:") or not st.startswith("status:"):
+    tail = [p.strip() for p in rest.rsplit("|", 2)]
+    if any(t.startswith(("evidence:", "status:")) for t in tail[1:]):
+        return _log_v1(date, typ, tail)
+    return _log_v22(date, typ, tail)
+
+
+def _log_v1(date, typ, tail):
+    """v1: date | type | what | evidence: <pointer> | status: <s>"""
+    if len(tail) < 3 or not tail[1].startswith("evidence:") or not tail[2].startswith("status:"):
         return None, "4th field must start with 'evidence:', 5th with 'status:'"
-    return (date, typ, what, ev[len("evidence:"):].strip(), st[len("status:"):].strip()), None
+    return (date, typ, tail[0], tail[1][len("evidence:"):].strip(), tail[2][len("status:"):].strip(), 1), None
+
+
+def _log_v22(date, typ, tail):
+    """v2.2: date | type | what | <pointer>; a finding carries `confirmed` or `hypothesis` between what and pointer
+    (GAP-12: the print says 'finding with <what was learned>, then confirmed or hypothesis'; read as its own field).
+    A | inside the what-text is kept: only the last one or two bars split."""
+    if len(tail) == 3 and tail[1] in CLAIM_STATUSES:
+        what, status, ptr = tail
+    else:
+        what, ptr, status = " | ".join(tail[:-1]), tail[-1], V22_DEFAULT[typ]
+    if not what or not ptr:
+        return None, "what-text and pointer must not be empty"
+    return (date, typ, what, ptr, status, 2), None
 
 
 def _metric(what):
-    m = METRIC_RE.match(what)
+    m, second = METRIC22_RE.match(what), "wrong_state"
     if not m:
-        return None, "metric line must read rediscoveries=<n> tokens_open=<n> cold_test=<k>/5"
+        m, second = METRIC_RE.match(what), "tokens_open"      # v1 line
+    if not m:
+        return None, "metric line must read rediscoveries=<n> wrong_state=<n> cold_test=<k>/5"
     if int(m[3]) > 5:
         return None, "cold_test k must be <= 5"
-    return {"rediscoveries": int(m[1]), "tokens_open": int(m[2]), "cold_test": int(m[3])}, None
+    return {"rediscoveries": int(m[1]), second: int(m[2]), "cold_test": int(m[3])}, None
 
 
 def parse_log(line, strict=True):
-    """date | type | what happened | evidence: <pointer> | status: <s>. Returns (entry, error); error 'skip' for headers/blank."""
+    """v2.2 `date time | type | what | [confirmed|hypothesis |] pointer` or v1 `date | type | what | evidence: p | status: s`.
+    Returns (entry, error); error 'skip' for headers/blank."""
     raw = line.rstrip("\r\n").lstrip("\ufeff")       # 11-06: PowerShell 5.1 can leave a BOM after an append (s8 item 8)
     if not raw.strip() or raw.startswith("#") or raw.startswith("("):
         return None, "skip"
     fields, err = _log_fields(raw)
     if err:
         return None, err
-    date, typ, what, ev, status = fields
+    date, typ, what, ev, status, ver = fields
     if status not in (LOG_STATUSES if strict else CLAIM_STATUSES):
         return None, f"bad status {status!r}"
-    e = {"date": date, "type": typ, "what": what, "evidence": ev, "status": status, "raw": raw}
+    e = {"date": date, "type": typ, "what": what, "evidence": ev, "status": status, "raw": raw, "v": ver}
     if typ == "metric":
         e["metric"], err = _metric(what)
         if err:
@@ -108,7 +147,18 @@ def parse_log(line, strict=True):
 
 
 def render_log(date, typ, what, evidence, status):
+    """v1 line (kept: old LOGs are append-only and stay in this form)."""
     return f"{date} | {typ} | {what} | evidence: {evidence} | status: {status}"
+
+
+def render_log22(date, typ, what, pointer, status=None):
+    """v2.2 line; only a finding carries its status."""
+    mid = f" | {status}" if typ == "finding" and status else ""
+    return f"{date} | {typ} | {what}{mid} | {pointer}"
+
+
+def checkpoint_line(date, previous):
+    return render_log22(date, "checkpoint", f"STATE updated from lines since {previous}", "STATE.md")
 
 
 def _decode(data):
@@ -262,7 +312,7 @@ def _drop(parts, key):
     parts["questions"][:] = [q for q in parts["questions"] if norm(q) != key]
 
 
-def _apply_prefixed(parts, w):
+def _apply_prefixed(parts, w, date=""):
     """conflict: / procedure: / question: / receipt: / drop: lines pick a STATE section (GAP-5: the skill does not say
     how a LOG line maps to a STATE section; this is the convention under test). Returns False for a plain claim."""
     low = w.lower()
@@ -271,6 +321,7 @@ def _apply_prefixed(parts, w):
     elif low.startswith("procedure:"):
         name, _, steps = w[len("procedure:"):].partition(":")
         parts["procedures"][name.strip()] = steps.strip()
+        parts["proc_date"][name.strip()] = date
     elif low.startswith("question:"):
         q = w[len("question:"):].strip()
         if q and q not in parts["questions"]:
@@ -307,11 +358,14 @@ def _apply_claim(parts, e):
 def derive(entries):
     """LOG -> STATE parts: claims (latest line wins), conflicts, procedures, open blockers (type blocker, status unknown;
     a later line with the same text and another status closes it), questions (max 5), receipts, metrics."""
-    parts = {"claims": {}, "conflicts": {}, "procedures": {}, "blockers": {}, "questions": [], "receipts": {}, "metrics": []}
+    parts = {"claims": {}, "conflicts": {}, "procedures": {}, "proc_date": {}, "blockers": {}, "questions": [], "receipts": {},
+             "metrics": [], "checkpoint": None}
     for e in entries:
         if e["type"] == "metric":
             parts["metrics"].append(e)
-        elif _apply_prefixed(parts, e["what"]):
+        elif e["type"] == "checkpoint":
+            parts["checkpoint"] = e["date"]
+        elif _apply_prefixed(parts, e["what"], e["date"]):
             pass
         elif e["type"] == "blocker":
             _apply_blocker(parts, e)
@@ -323,13 +377,17 @@ def derive(entries):
 
 def render_state(parts, project="<project>", date=None):
     date = date or dt.date.today().isoformat()
-    out = [f"# STATE {EM} {project}", f"(regenerated from LOG on {date}; keep ≤ ~2k tokens)", "", "Standing questions:"]
+    # v2.2 template. The header's tail after "keep ≤" is not on the print photos (tree/v22-print.md); "~2k tokens" is section 1's cap.
+    out = [f"# STATE {EM} {project}", f"(reviewed projection of LOG · last checkpoint: {date} · keep ≤ ~2k tokens)", "",
+           "Standing questions:"]
     out += [f"{i}. {q}" for i, q in enumerate(parts["questions"], 1)]
     out += ["", "Claims:"] + [render_claim(c) for c in sorted(parts["claims"].values(), key=lambda c: c["n"])]
-    out += ["", "Conflicts, both sides kept:"] + list(parts["conflicts"].values())
-    out += ["", "Procedures, the how-to that keeps getting forgotten:"] + [f"{k}: {v}" for k, v in parts["procedures"].items()]
-    out += ["", "Open blockers:"] + [f"{b['text']} {EM} since {b['since']} {EM} {b['owner']}" for b in parts["blockers"].values()]
-    out += ["", "Receipts:"] + list(parts["receipts"].values())
+    out += [f"- {c}" for c in parts["conflicts"].values()]      # v2.2: conflict lines sit in the Claims list
+    out += ["", 'Procedures (the "how to" that keeps getting forgotten):']
+    out += [f"- {k}: {v} {EM} confirmed {EM} {parts['proc_date'].get(k, date)}" for k, v in parts["procedures"].items()]
+    out += ["", "Open blockers:"] + [f"- {b['text']} {EM} since: {b['since']}" for b in parts["blockers"].values()]
+    if parts["receipts"]:                                      # v1 LOGs only: v2.2 dropped receipts
+        out += ["", "Receipts:"] + list(parts["receipts"].values())
     return "\n".join(out) + "\n"
 
 
@@ -382,6 +440,8 @@ def parse_state(text):
             sec = head
         elif sec is None:
             out["header"].append(s)
+        elif sec == "claims" and s.lower().lstrip("- ").startswith("conflict:"):
+            out["conflicts"].append(s)       # v2.2 keeps conflict lines inside the Claims list
         elif sec == "claims":
             c = parse_claim(s)
             out["claims" if c else "bad_claims"].append(c or s)
@@ -395,7 +455,8 @@ def confirmed_claims(state_text):
 
 
 # ---------------------------------------------------------------- the gate (section 3) + contract (template)
-CONTRACT_KEYS = ("requires", "reads", "produces", "effects", "conflicts")
+CONTRACT_KEYS = ("requires", "effects")              # v2.2
+CUT_KEYS = ("reads", "produces", "conflicts")        # v1 keys, cut in v2.2: tolerated when present, never required
 
 
 class ContractError(ValueError):
@@ -462,7 +523,7 @@ def _check_keys(doc, meta):
     missing = [k for k in CONTRACT_KEYS if k not in meta]
     if missing:
         raise ContractError(f"metadata missing {missing}")
-    stray = [k for k in CONTRACT_KEYS if k in doc]
+    stray = [k for k in CONTRACT_KEYS + CUT_KEYS if k in doc]
     if stray:
         raise ContractError(f"{stray} must sit under metadata:")
     if not doc.get("name"):
@@ -476,11 +537,11 @@ def _as_list(v):
 
 
 def parse_contract(text):
-    """'In a real Cowork skill these five keys sit under metadata: or the loader rejects the skill.'"""
+    """'In a real Cowork skill the contract keys requires and effects sit under metadata: or the loader rejects it.'"""
     doc, meta = _fm_lines(_front_matter(text))
     _check_keys(doc, meta)
-    for k in CONTRACT_KEYS:
-        meta[k] = _as_list(meta[k])
+    for k in CONTRACT_KEYS + CUT_KEYS:
+        meta[k] = _as_list(meta.get(k))
     doc["metadata"] = meta
     return doc
 
@@ -491,10 +552,14 @@ def item_met(item, confirmed, message):
     it = _key(item)
     if not it:
         return False
-    # skeptic round 11-05: '.' between word chars continues the token (v1.2 is not met by v1.2.3); a final '.' does not
-    if re.search(r"(?<!\w)(?<!\w\.)" + re.escape(it) + r"(?!\w)(?!\.\w)", norm(message)):
-        return True
-    return any(it == _key(c) for c in confirmed)
+    return _phrase_in(it, message) or any(it == _key(c) for c in confirmed)
+
+
+def _phrase_in(phrase, text):
+    """Whole-phrase match. Skeptic round 11-05: '.' between word chars continues the token (v1.2 is not met by v1.2.3);
+    a final '.' does not."""
+    it = _key(phrase)
+    return bool(it) and bool(re.search(r"(?<!\w)(?<!\w\.)" + re.escape(it) + r"(?!\w)(?!\.\w)", norm(text)))
 
 
 def _key(s):
@@ -502,8 +567,39 @@ def _key(s):
     return norm(s).rstrip(" .;:!")
 
 
-def gate(contract, confirmed, message):
-    """Returns (load, unmet). GAP-8 fixed 11-05: an empty `requires` never loads (no claim to match = no match)."""
+def gate(contract, confirmed, message, authorised=(), asked=False):
+    """v2.2 gate (section 3; default: no skill acts). Returns (act, why_not).
+    Acting is allowed only when the user asked for it (named the skill in `message`, or `asked=True`: the caller judged
+    that the message asks for what the skill does; that judgement is not mechanical) OR a confirmed claim requires it
+    (GAP-13: read as 'a confirmed claim names the skill as a whole phrase'), AND every declared effect is in
+    `authorised`. `requires` items do not block (v2.1's 'every requires item confirmed' was cut): see gate_report."""
+    name = contract["name"]
+    why = []
+    if not (asked or _phrase_in(name, message) or any(_phrase_in(name, c) for c in confirmed)):
+        why.append("not asked by the user and no confirmed claim requires it")
+    auth = {_key(a) for a in authorised}
+    why += [f"effect not authorised: {e}" for e in contract["metadata"]["effects"] if _key(e) not in auth]
+    return (not why), why
+
+
+def gate_report(contract, confirmed, message, authorised=(), asked=False):
+    """gate() plus what TASK.md records: the basis (asked by user / required by claim "<...>") and, as information
+    only, the `requires` items no confirmed claim or message phrase covers."""
+    act, why = gate(contract, confirmed, message, authorised, asked)
+    name = contract["name"]
+    claim = next((c for c in confirmed if _phrase_in(name, c)), None)
+    basis = "asked by user" if asked or _phrase_in(name, message) else (f'required by claim "{claim}"' if claim else None)
+    unconfirmed = [r for r in contract["metadata"]["requires"] if not item_met(r, confirmed, message)]
+    return {"name": name, "act": act, "why_not": why, "basis": basis, "requires_unconfirmed": unconfirmed}
+
+
+def gate_many(contracts, confirmed, message, authorised=(), asked=()):
+    """Each candidate on its own; `asked` = names the caller judged the message asks for. No conflict rule (cut in v2.2)."""
+    return [gate_report(c, confirmed, message, authorised, c["name"] in asked) for c in contracts]
+
+
+def gate_v1(contract, confirmed, message):
+    """v1 gate, kept for the benches. Returns (load, unmet). GAP-8 fixed 11-05: an empty `requires` never loads."""
     req = contract["metadata"]["requires"]
     if not req:
         return False, ["requires is empty"]
@@ -532,11 +628,11 @@ def _clash(c, by_name, by_conflict):
     return sorted(set(clash))
 
 
-def gate_many(contracts, confirmed, message):
-    """Several candidates: each passes the gate on its own; a clash between two PASSING candidates holds both out
+def gate_many_v1(contracts, confirmed, message):
+    """v1, kept for the benches. Several candidates: each passes the gate on its own; a clash between two PASSING candidates holds both out
     ('ask the user'). Order-independent. GAP-9 decided 11-06 (s8 item 7): SKILL.md says conflicts are never silently
     resolved, so there is no first-wins tie rule; a candidate that fails its own gate holds nobody out."""
-    verdicts = [gate(c, confirmed, message) for c in contracts]
+    verdicts = [gate_v1(c, confirmed, message) for c in contracts]
     by_name, by_conflict = _clash_index([c for c, v in zip(contracts, verdicts) if v[0]])
     out = []
     for c, (load, unmet) in zip(contracts, verdicts):
@@ -551,10 +647,22 @@ BLOCKER_NOTE = ("LOG blocker line: the question for the user goes in the what-te
                 "status stays unknown until a later line with the same what-text closes it")   # GAP-11, templates/TASK.md
 
 
-def task_capsule(goal, done, date, loaded="USER, STATE, skills: none", frontier=(), blockers=()):
-    t = [f"# TASK {EM} {goal}", date, f"budget: explore ≤ {EXPLORE_BUDGET} steps", f"done = {done}", f"loaded: {loaded}", "", "frontier:"]
-    t += [f"- [ ] {x}" for x in frontier] + ["", f"blockers ({BLOCKER_NOTE}):"] + [f"- {x}" for x in blockers]
-    t += ["", "close: append LOG → regenerate STATE → receipts"]
+def frontier_item(step, decides):
+    """Stop rule: 'before each step, name what it decides; if you cannot, write a blocker line and ask.'
+    Returns the frontier line, or None when `decides` is empty (no fixed step count in v2.2)."""
+    if not (decides or "").strip():
+        return None
+    return f"{step} {EM} decides: {decides.strip()}"
+
+
+def task_capsule(goal, done, date, loaded="USER ✓ · STATE ✓ · skills: none", frontier=(), blockers=(),
+                 active_skill="none", active_goal=None):
+    """v2.2 TASK.md. `active goal` defaults to the goal: a short follow-up ("ok", "continue") continues it and keeps
+    the active skill; it is not a new command. Frontier items: frontier_item() lines."""
+    t = [f"# TASK {EM} {goal}", f"date: {date}", f"done = {done}", f"loaded: {loaded}", f"active skill: {active_skill}",
+         f"active goal: {active_goal or goal}", "frontier:"]
+    t += [f"- [ ] {x}" for x in frontier] + ["blockers:"] + [f"- {x}" for x in (blockers or ["<none>"])]
+    t += ["close: append LOG → checkpoint STATE"]
     return "\n".join(t) + "\n"
 
 
@@ -588,15 +696,18 @@ def receipt_line(path, archived=False, root="."):
     return f"receipt: {path} {EM} {sha256_file(os.path.join(root, path))} {EM} archived {'yes' if archived else 'no'}"
 
 
-def metric_line(date, rediscoveries, tokens_open, cold_test):
-    return render_log(date, "metric", f"rediscoveries={rediscoveries} tokens_open={tokens_open} cold_test={cold_test}/5", "weekly", "confirmed")
+def metric_line(date, rediscoveries, wrong_state, cold_test, extra=""):
+    """v2.2 weekly line: rediscoveries, wrong-state incidents, cold test k/5 (answers checked against sources, not STATE).
+    extra = further `key=value` fields (Tripwire print s5: the line is extended, not replaced)."""
+    what = f"rediscoveries={rediscoveries} wrong_state={wrong_state} cold_test={cold_test}/5" + (" " + extra if extra else "")
+    return render_log22(date, "metric", what, "weekly")
 
 
 def metric_due(entries, today):
     last = [e["date"] for e in entries if e["type"] == "metric"]
     if not last:
         return True
-    return (dt.date.fromisoformat(today) - dt.date.fromisoformat(max(last))).days >= 7
+    return (dt.date.fromisoformat(today[:10]) - dt.date.fromisoformat(max(last)[:10])).days >= 7
 
 
 # ---------------------------------------------------------------- whole-project check (used by the dogfood checker)
@@ -720,8 +831,8 @@ def _cmd_regen(argv):
 def _cmd_gate(argv):
     c = parse_contract(read_text(argv[1]))
     conf = confirmed_claims(read_text(argv[2]))
-    load, unmet = gate(c, conf, argv[3])
-    return {"name": c["name"], "load": load, "unmet": unmet}
+    auth = argv[argv.index("--authorised") + 1].split(",") if "--authorised" in argv else ()
+    return gate_report(c, conf, argv[3], auth, "--asked" in argv)
 
 
 def main(argv):
