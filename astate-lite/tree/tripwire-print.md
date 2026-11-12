@@ -1,13 +1,13 @@
 # Tripwire notes: the user's print + what is built (11-10)
 
 Source: print "ASTATE-lite + Tripwire Notes: Low-Token Autonomous Scaffolding", 9 November 2026. Photos in
-the user's photos: `7f25f80d-image.jpg` (page 1), `13181e7d-image.jpg` (page 2, sharp, 11-10; `599d05d5-image.jpg` = blurred earlier shot).
+`~/.claude/uploads/<session>/`: `7f25f80d-image.jpg` (page 1), `13181e7d-image.jpg` (page 2, sharp, 11-10; `599d05d5-image.jpg` = blurred earlier shot).
 
 ## Index
 1. Page 1 as read (lines 12-21)
 2. Page 2 as read from the sharp photo: cost tiers, context rules, s5 Measurement, s6 Rollout and risks (lines 23-50)
-3. Built: step 1 hook + measurement, `~/.claude/hooks/tripwire.py` (lines 52-62); 3b step 2 dispatcher `tripwire_dispatch.py` (lines 64-71)
-4. Not built / open (lines 73-77)
+3. Built: step 1 hook + measurement, `~/.claude/hooks/tripwire.py` (lines 52-62); 3b step 2 dispatcher `tripwire_dispatch.py` (lines 64-71); 3c real-message score 11-12: sorter fails (lines 73-80); 3d retrained on real messages (lines 82-87)
+4. Not built / open (lines 89-93)
 
 ## 1. Page 1 as read
 - A tripwire note = a TASK frontier item with triggers. On task close every applied note becomes a LOG line; a durable-fact note becomes a STATE hypothesis claim.
@@ -69,6 +69,22 @@ Table "Metric | Source | What it shows":
 - Eval: `tripwire_eval.py` 9 of 9 both directions 11-10 (5 dispatcher cases need 8084 up). Labelled bench `tests/tripwire_bench.py -v` (50 messages written by Claude, NOT real user messages): 44 of 50; clear classes 24 of 30 sorted without escalation, 2 of 30 wrong class unescalated (a steer read as new task, a new task read as steer); cancel + remark escalated 20 of 20; cancel sorted as another class 0; escalation 24 of 50.
 - Metric: weekly line gains `tw_esc=e/n` (escalated / dispatched). Bars, OURS, fixed 11-10: cancel sorted as another class = 0 on the bench; wrong class <= 10 % of clear bench messages; tw_esc recorded, no bar yet (no real data).
 - NOT built from step 2: parallel read workers (the dispatcher only says "may run as a separate worker"; spawning stays the main model's call).
+
+## 3c. Real-message score 11-12 (user "Please" to "Score the dispatcher on real messages"): sorter FAILS its bar
+- Data: 127 distinct real user prompts, 9 chats, since 11-10 17:00 (transcripts read by script only). `tests/tripwire_real_collect.py <outdir>` reruns `triage()` on each -> `real_msgs.txt`, `real_pred.json`; reference labels = Sage-A1.5 via localread.py in 25-line chunks (123 of 127 labelled; Sage is itself a small model, its labels are NOT verified truth); `tests/tripwire_real_cmp.py` (run in the outdir). Outputs hold private user text: never into the public repo.
+- Escalation 110 of 127 = 87 % (bench: 24 of 50). Reasons: remark 63, unsure 40, model-cancel 6, stop word 1.
+- Unescalated 17: 14 agree with Sage, 3 differ (3 of 17 = 18 %, bar was <= 10 %).
+- Nearest class == Sage over all labelled: 62 of 122 = 51 %. "remark"-nearest 60: Sage calls only 29 remark, 25 are new_task/steer -> never make remark silent. unsure 39: nearest right 19.
+- Cancel: 7 called cancel, 0 are a cancel per Sage (delete/clean requests pull the cancel prototype). All escalated, so no harm done, but no value.
+- Fixed 11-12: STOP regex matched "dont forget that" -> lookbehinds for don't/dont/not/never (backup `tripwire_dispatch.py.bak-1112stop`); eval 9 of 9, bench unchanged (2 wrong, 0 dangerous, 24 of 50).
+- Verdict (Claude's): prototypes written by Claude do not transfer to the user's real phrasing; the embedder tier adds a "you judge" line to almost every mid-task message. Step 3 should not build on it. Options: (a) embedder tier logs only, script tier (bare link, file overlap, stop word) keeps speaking; (b) rebuild prototypes from these 123 labelled real messages and re-score on a later held-out week.
+
+## 3d. Retrained on real messages 11-12 (user "Please retrain")
+- `tests/tripwire_real_train.py <outdir> [--write]`: 5-fold held-out on the 123 Sage-labelled real messages (labels unverified). Nearest class == label: old prototypes 61 of 123, old+real 83, real only 79.
+- old+real, remark escalates, score 0.50 / margin 0.05: escalated 78 of 123 (old at 0.50/0.03: 106), spoke 45, wrong 4 (9 %). At margin 0.03: spoke 59, wrong 9 (15 %) -> margin raised to 0.05. Making remark silent: no gain at the 10 % bar (esc 79). Full table: `<outdir>/real_train.json`.
+- Installed: `~/.claude/hooks/tripwire_protos_real.json` (LOCAL ONLY, real user text, never publish) merged by `proto_texts()` in `tripwire_dispatch.py`; `MIN_MARGIN` 0.05; backup `tripwire_dispatch.py.bak-1112real`. Without that file the dispatcher runs on the source prototypes (public copy).
+- After install: eval 9 of 9 (cancel case's steer sentence swapped for a source prototype, the old one now escalates; backup `tripwire_eval.py.bak-1112real`); bench 2 wrong, 0 dangerous, escalation 27 of 50 (was 24).
+- NOT shown: gain on messages outside these 123. The installed set is in-sample on them; needs a re-score on a later week (collect with SINCE moved past 11-12, label, `tripwire_real_cmp.py`).
 
 ## 4. Not built / open
 - Step 2's parallel read workers; step 3 (small-model STATE drafting, offline eval grading).

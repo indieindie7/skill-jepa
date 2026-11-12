@@ -216,3 +216,11 @@ model on 127.0.0.1:8084 sorts steer / new task / status / cancel / remark, anyth
 Checks: `tests/tripwire_eval.py` 9 of 9 cases; `tests/tripwire_bench.py` 44 of 50 on a 50-message set written by the model,
 not real user messages (2 of 30 clear messages sorted into the wrong class, no cancel mis-sorted). Not built: parallel read
 workers, step 3. No week of real-use numbers yet.
+2026-11-12: base ASTATE print added (`astate-lite/tree/astate-print.md`). Dispatcher scored on 127 real user messages
+(`tests/tripwire_real_collect.py`, `tripwire_real_cmp.py`; reference labels from a local model, not verified truth): it
+escalated 87 % and agreed with the labels on 62 of 122, so the sorter failed. Retrain (`tests/tripwire_real_train.py`, 5-fold
+held-out): prototypes from the labelled messages lift nearest-class agreement from 61 to 83 of 123; at score 0.50 / margin 0.05
+it speaks on 45 and is wrong on 4. Numbers in `tree/tripwire-print.md` s3c and s3d. The real-message prototypes and messages
+are private and NOT in this repo: the published dispatcher runs on its source prototypes (bench here: 38 of 50 escalated,
+0 wrong class, 0 cancel mis-sorted). `tripwire_eval.py` was flaky on 2026-11-12 (6 to 9 of 9 across runs, different cases
+each run; cause unverified, embedder timeouts suspected). No result yet on messages outside the labelled set.

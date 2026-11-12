@@ -17,11 +17,11 @@
   "log_entries": 7,
   "agent": {
    "files_read": [
-    "C:/Users/john/.claude/skills/astate-lite/SKILL.md",
-    "C:/Users/john/.claude/skills/astate-lite/templates/STATE.md",
-    "C:/Users/john/.claude/skills/astate-lite/templates/LOG.md",
-    "C:/Users/john/.claude/skills/astate-lite/templates/TASK.md",
-    "C:/Users/john/.claude/skills/astate-lite/templates/SKILL-CONTRACT.md",
+    "~/.claude/skills/astate-lite/SKILL.md",
+    "~/.claude/skills/astate-lite/templates/STATE.md",
+    "~/.claude/skills/astate-lite/templates/LOG.md",
+    "~/.claude/skills/astate-lite/templates/TASK.md",
+    "~/.claude/skills/astate-lite/templates/SKILL-CONTRACT.md",
     "README.md",
     "config/app.toml",
     "src/app.py",

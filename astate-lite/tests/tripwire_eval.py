@@ -129,7 +129,7 @@ def status_question():
 def cancel():
     s = mid_task("C:/proj/src/render.py")
     line = say(s, "stop, cancel that and use the old layout")
-    steer = say(s, "keep the old layout working too")
+    steer = say(s, "when you edit the loader keep the old format working")   # 11-12: a source prototype; the old sentence now escalates at margin 0.05
     case("cancel", "you judge" in line and "stop_word" in line, "stop_word" not in steer and "steer -> note" in steer and notes(s) == 1)
 
 

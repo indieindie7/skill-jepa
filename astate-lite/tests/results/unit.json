@@ -2,7 +2,7 @@
  "tests": 100,
  "failures": 0,
  "errors": 0,
- "seconds": 3.81,
+ "seconds": 24.83,
  "stress": {
   "idempotence_15_cycles": {
    "cycles": 15,
@@ -17,17 +17,17 @@
    "confirmed_lost": 5
   },
   "regen_100k_lines": {
-   "seconds": 0.29,
+   "seconds": 0.75,
    "distinct_claims": 20000,
    "kept": 143,
    "dropped": 19713
   },
   "concurrent_8x500_appends": {
    "unlocked": {
-    "lines": 3215,
-    "lost": 785,
-    "parsed": 3193,
-    "torn": 3,
+    "lines": 3764,
+    "lost": 236,
+    "parsed": 3735,
+    "torn": 4,
     "proc_errors": 0
    },
    "locked": {
@@ -37,14 +37,14 @@
     "torn": 0,
     "proc_errors": 0
    },
-   "seconds": 1.78
+   "seconds": 18.06
   },
   "contract_fuzz_5k": {
    "accepted": 0,
    "rejected": 5000
   },
   "gate_2000_contracts": {
-   "seconds": 0.664,
+   "seconds": 1.944,
    "loaded": 383
   },
   "fuzz_10k_lines": {

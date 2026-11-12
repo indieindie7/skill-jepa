@@ -29,8 +29,9 @@ import tripwire as tw  # noqa: E402
 
 EMB_URL = "http://127.0.0.1:8084/v1/embeddings"
 CACHE = Path(__file__).resolve().parent / "tripwire_protos.json"
-MIN_SCORE, MIN_MARGIN = 0.50, 0.03          # tuned 11-10 on tripwire_eval.py's labelled set; below either -> escalate
-STOP = re.compile(r"\b(stop|cancel|abort|halt|hold on|never ?mind|forget (it|that)|scrap (it|that)|drop (it|that)|undo|revert|"
+MIN_SCORE, MIN_MARGIN = 0.50, 0.05          # margin 0.03 -> 0.05 on 11-12 (5-fold on 123 real messages, tests/tripwire_real_train.py)
+REAL = Path(__file__).resolve().parent / "tripwire_protos_real.json"   # local only: real user messages, never published
+STOP = re.compile(r"(?<!don't )(?<!dont )(?<!not )(?<!never )\b(stop|cancel|abort|halt|hold on|never ?mind|forget (it|that)|scrap (it|that)|drop (it|that)|undo|revert|"
                   r"pare|para com|cancela|esquece)\b", re.I)
 URL_ONLY = re.compile(r"^\s*https?://\S+\s*$")
 FILE = re.compile(r"[\w./\\-]*\w\.[A-Za-z][A-Za-z0-9]{0,5}\b|[\w.-]+(?:[/\\][\w.-]+)+")
@@ -74,16 +75,33 @@ def unit(v):
     return [x / n for x in v]
 
 
+def proto_texts():
+    """Source prototypes plus the local real-message ones (tripwire_real_train.py --write), when that file exists."""
+    p = {c: list(t) for c, t in PROTOS.items()}
+    try:
+        real = json.loads(REAL.read_text(encoding="utf-8"))["protos"]
+    except (OSError, ValueError, KeyError):
+        return p
+    for c in p:
+        p[c] += [t for t in real.get(c, []) if t not in p[c]]
+    return p
+
+
+def embed_many(texts):
+    return [v for i in range(0, len(texts), 24) for v in embed(texts[i:i + 24])]
+
+
 def protos():
     """{class: [unit vectors]}; embedded once, cached by the hash of the prototype text."""
-    key = hashlib.sha1(json.dumps(PROTOS, sort_keys=True).encode()).hexdigest()
+    texts = proto_texts()
+    key = hashlib.sha1(json.dumps(texts, sort_keys=True).encode()).hexdigest()
     try:
         c = json.loads(CACHE.read_text(encoding="utf-8"))
         if c["key"] == key:
             return c["vecs"]
     except (OSError, ValueError, KeyError):
         pass
-    vecs = {cls: [[round(x, 5) for x in v] for v in embed(texts)] for cls, texts in PROTOS.items()}
+    vecs = {cls: [[round(x, 5) for x in v] for v in embed_many(ts)] for cls, ts in texts.items()}
     tmp = CACHE.with_suffix(f".{os.getpid()}.tmp")
     tmp.write_text(json.dumps({"key": key, "vecs": vecs}), encoding="utf-8")
     os.replace(tmp, CACHE)
