@@ -15,12 +15,14 @@ Speaks only in a session that has edited files or holds notes (mid-task); elsewh
   CLI:   py -3.13 -I tripwire_dispatch.py classify "<message>" [--session <id>]
 """
 import hashlib
+import http.client
 import json
 import math
 import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -62,10 +64,32 @@ DO = {
 
 
 # ---------------------------------------------------------------- small model
+def emb_timeout():
+    """Seconds to wait for the embedder: 4 (the hook's budget is 8), or env TRIPWIRE_EMB_TIMEOUT (tests/tripwire_eval.py
+    raises it: on 11-12 a busy embedder answered after 4 s and the eval scored the timeout as a wrong class)."""
+    try:
+        secs = float(os.environ.get("TRIPWIRE_EMB_TIMEOUT", ""))
+    except ValueError:
+        return 4.0
+    return min(120.0, max(0.5, secs)) if math.isfinite(secs) else 4.0
+
+
+def err_text(e):
+    """Cause for the log line: exception type, plus the HTTP status and the server's message when there is one."""
+    out = type(e).__name__
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            body = e.read().decode("utf-8", "replace")
+        except (OSError, ValueError, http.client.HTTPException):   # e.g. IncompleteRead on a cut-off error body
+            body = ""
+        return f"{out} {e.code} {' '.join(body.split())[:160]}".strip()
+    return f"{out} {str(e)[:160]}".strip()
+
+
 def embed(texts):
     body = json.dumps({"input": ["task: classification | query: " + t for t in texts]}).encode()
     req = urllib.request.Request(EMB_URL, body, {"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=4) as r:
+    with urllib.request.urlopen(req, timeout=emb_timeout()) as r:
         data = json.loads(r.read())["data"]
     return [unit(e["embedding"]) for e in sorted(data, key=lambda e: e["index"])]
 
@@ -141,8 +165,8 @@ def triage(text):
         return {"cls": "new_task", "escalated": False, "reason": "bare_link"}
     try:
         cls, score, margin = nearest(text[:600])
-    except (OSError, ValueError, KeyError) as e:
-        return {"cls": "ambiguous", "escalated": True, "reason": "embedder_down:" + type(e).__name__}
+    except (OSError, ValueError, KeyError, http.client.HTTPException) as e:
+        return {"cls": "ambiguous", "escalated": True, "reason": "embedder_down:" + type(e).__name__, "err": err_text(e)}
     out = {"cls": cls, "escalated": cls == "cancel", "reason": "model", "score": round(score, 3), "margin": round(margin, 3)}
     if cls == "remark" or score < MIN_SCORE or margin < MIN_MARGIN:
         out.update(cls="ambiguous", escalated=True, reason=("remark" if cls == "remark" else f"unsure:{cls}"))
