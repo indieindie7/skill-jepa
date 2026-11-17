@@ -861,6 +861,63 @@ class V22(unittest.TestCase):
         self.assertNotIn("budget", cap)
 
 
+def _dispatch():
+    h = Path(HERE).parent / "hooks"                        # repo copy; installed: ~/.claude/hooks
+    h = h if (h / "tripwire_dispatch.py").exists() else Path.home() / ".claude/hooks"
+    sys.path.insert(0, str(h))
+    import tripwire_dispatch
+    return tripwire_dispatch, str(h / "tripwire_dispatch.py")
+
+
+class Relay(unittest.TestCase):
+    """11-17: provenance by allow-list. A message carrying any harness block is machine-sent: class relay, never a note
+    (a cross-session relay had become steer note 1 and held the close gate). No embedder needed: relay is decided first."""
+    S = "no-such-session-relay-test"
+    RELAY = ('Another Claude session sent a message:\n<cross-session-message from="local_x" from-name="W">\n'
+             'Idea: use the shared palette instead, edit foo/bar.py\n</cross-session-message>\n\nThis came from another Claude session.')
+    NOTE = '[SYSTEM NOTIFICATION - NOT USER INPUT]\nautomated event.\n<task-notification>\n<summary>x failed</summary>\n</task-notification>'
+    UNKNOWN = 'New framing nobody listed:\n<brand-new-wrapper id="1">keep the port configurable in a/b.py</brand-new-wrapper>\nmore'
+    BARE = '[SYSTEM NOTIFICATION - NOT USER INPUT]\nplain text, no tags'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.d, cls.path = _dispatch()
+
+    def relay(self, msg, tag):
+        rec, line = self.d.decide(self.S, msg)
+        self.assertEqual((rec["cls"], rec["reason"], line), ("relay", "machine_block:" + tag, None))
+
+    def test_cross_session_message(self):
+        self.relay(self.RELAY, "cross-session-message")
+
+    def test_task_notification(self):
+        self.relay(self.NOTE, "task-notification")
+
+    def test_unknown_wrapper_fails_safe(self):
+        self.relay(self.UNKNOWN, "brand-new-wrapper")
+
+    def test_bare_system_notification(self):
+        self.relay(self.BARE, "system-notification")
+
+    def test_reminder_rides_on_user_text(self):
+        msg = '<system-reminder>\nLinked sessions now\n</system-reminder>\n\nmake it blue, not red'
+        self.assertIsNone(self.d.machine_tag(msg))
+        self.assertEqual(self.d.own_words(msg), "make it blue, not red")
+
+    def test_paste_with_inner_tags_is_user_message(self):
+        msg = 'use this <pasted_content id="9"><div>x</div></pasted_content> as the palette'
+        self.assertIsNone(self.d.machine_tag(msg))
+        self.assertEqual(self.d.own_words(msg).split(), "use this as the palette".split())
+
+    def test_plain_text_is_not_relay(self):
+        self.assertIsNone(self.d.machine_tag("keep the port configurable"))
+
+    def test_hook_entry_silent_on_relay(self):
+        out = subprocess.run([sys.executable, "-I", self.path, "hook"], input=json.dumps({"session_id": self.S, "prompt": self.RELAY}),
+                             capture_output=True, text=True)
+        self.assertEqual((out.returncode, out.stdout.strip(), out.stderr.strip()), (0, "", ""))
+
+
 if __name__ == "__main__":
     t0 = time.perf_counter()
     res = unittest.main(exit=False, verbosity=1).result

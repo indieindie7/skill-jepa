@@ -36,6 +36,25 @@ REAL = Path(__file__).resolve().parent / "tripwire_protos_real.json"   # local o
 STOP = re.compile(r"(?<!don't )(?<!dont )(?<!not )(?<!never )\b(stop|cancel|abort|halt|hold on|never ?mind|forget (it|that)|scrap (it|that)|drop (it|that)|undo|revert|"
                   r"pare|para com|cancela|esquece)\b", re.I)
 URL_ONLY = re.compile(r"^\s*https?://\S+\s*$")
+# Pasted blocks are data, not the user's words (11-15: a pasted PowerShell log became steer note 5, triggers = paths in the paste).
+PASTE = re.compile(r"<pasted_content\b[^>]*>.*?(?:</pasted_content\b[^>]*>|\Z)", re.S)
+PS_LINE = re.compile(r"(?m)^\s*PS [A-Za-z]:\\[^\n>]*>.*$")
+# Machine-sent blocks are not the user's words either (11-17: a relayed cross-session idea became steer note 1 and held the close gate).
+# Rule (user 11-17: "make the robust fix"): provenance by allow-list, not a list of known wrappers. ANY <tag>...</tag> block
+# marks the whole message as machine-sent (class "relay": never a note), except the tags in USER_OK, which the harness attaches
+# to a message the user did type. An unknown new wrapper therefore fails safe (no note; the model still reads the message).
+BLOCK = re.compile(r"<([A-Za-z][\w-]*)\b[^>]*>.*?</\1\s*>", re.S)
+USER_OK = {"system-reminder"}
+MACHINE_LINE = re.compile(r"(?m)^\s*\[SYSTEM NOTIFICATION\b")
+
+
+def machine_tag(text):
+    """Name of the first block that marks the message as not typed by the user, else None."""
+    text = PASTE.sub(" ", text)
+    for m in BLOCK.finditer(text):
+        if m.group(1).lower() not in USER_OK:
+            return m.group(1).lower()
+    return "system-notification" if MACHINE_LINE.search(text) else None
 FILE = re.compile(r"[\w./\\-]*\w\.[A-Za-z][A-Za-z0-9]{0,5}\b|[\w.-]+(?:[/\\][\w.-]+)+")
 PROTOS = {
     "steer": ["use the shared palette instead of hardcoded colours", "keep the port configurable", "make it blue, not red",
@@ -156,6 +175,12 @@ def overlap(files, touched):
     return sorted(set(hit))
 
 
+def own_words(text):
+    """The message without pasted blocks, harness blocks and shell-prompt lines: only this is classified, named or recorded."""
+    text = BLOCK.sub(" ", PASTE.sub(" ", text))
+    return PS_LINE.sub(" ", PASTE.sub(" ", text)).strip()
+
+
 def triage(text):
     """{cls, escalated, reason, score, margin}; cls is one of steer new_task status cancel ambiguous."""
     stop = STOP.search(text)
@@ -199,7 +224,16 @@ def task_line(hit):
 
 def decide(session, text):
     """(log record, line for the main model or None)."""
+    pasted = text
+    tag = machine_tag(text)
+    if tag:                                                   # not typed by the user: data for the main model, never a note
+        return {"cls": "relay", "escalated": False, "reason": "machine_block:" + tag}, None
+    text = own_words(text)
+    if not text:                                              # paste only: data for the main model, never a note
+        return {"cls": "paste", "escalated": False, "reason": "paste_only"}, None
     rec = triage(text)
+    if text != pasted.strip():
+        rec["paste"] = True
     touched = tw.touched(session)
     data = tw.load(session)
     if not touched and not (data and data["notes"]):          # not mid-task: sort and log, say nothing
@@ -226,18 +260,22 @@ def run(session, text):
     return rec, line
 
 
+def hook_mode():
+    hook = json.loads(sys.stdin.read() or "{}")
+    text = str(hook.get("prompt") or "").strip()
+    if not (text and hook.get("session_id")):
+        return
+    _, line = run(hook["session_id"], text)
+    if line:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": line}}))
+
+
 def main(argv):
     if argv[:1] == ["hook"]:
-        hook = json.loads(sys.stdin.read() or "{}")
-        text = str(hook.get("prompt") or "").strip()
-        if text and hook.get("session_id"):
-            _, line = run(hook["session_id"], text)
-            if line:
-                print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": line}}))
-        return
+        return hook_mode()
     if argv[:1] == ["classify"] and len(argv) > 1:
         session = tw.opt(argv, "--session")
-        rec, line = run(session, argv[1]) if session else (triage(argv[1]), None)
+        rec, line = run(session, argv[1]) if session else (triage(own_words(argv[1]) or argv[1]), None)
         print(json.dumps({**rec, "line": line}, ensure_ascii=False))
         return
     print(__doc__)
