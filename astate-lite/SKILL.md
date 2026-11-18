@@ -46,6 +46,4 @@ Claims that disagree both stay, marked `conflict`, until one is checked. No IDs,
 -> `tree/astate-print.md`: the base ASTATE print (controlled forgetting: A=(M,B,R,I,P), keep/decimate rules, recovery record, 5 decimation probes, 6 falsifiers), transcribed 11-12 from the user's photos.
 -> `tree/impl.md`: code `tests/astate_lite.py` (regen, check, gate CLI; reads v1 and v2.2 lines), test rounds `tests/TESTS.md`, open gaps (GAP-12 finding status field, GAP-13 "claim requires it" = claim names the skill, STATE template middle missing from the photos).
 
-Mid-task steer from the user: `py -3.13 -I ~/.claude/hooks/tripwire.py add "<steer>" --path <file> [--block]`, then `applied <id>` or `waive <id> "<why>"` (Stop is blocked while a note is open). Since 11-10 the dispatcher hook `hooks/tripwire_dispatch.py` sorts each user message mid-task and records a steer as a note by itself: a `[tripwire] steer -> note N` line means apply it then `applied N`, or `waive N` if it was not a steer. Details: tree/tripwire-print.md s3b.
-
-Dispatcher lines are weak evidence (11-12, 127 real messages: 87 % escalated, nearest class agrees with a Sage label 51 %): judge the message yourself; trust only its script tier (bare link, file overlap, stop word). tree/tripwire-print.md s3c.
+Tripwire (mid-task steer notes + dispatcher hooks) is OFF since 2026-11-18: it failed in real use. Do not register the hooks or run add / applied / waive; follow a steer from the conversation itself. Post-mortem: tree/tripwire-postmortem.md.
