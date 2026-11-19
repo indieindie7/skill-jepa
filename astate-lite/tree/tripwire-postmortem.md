@@ -40,6 +40,11 @@ a cheap script could tell a steer from a new task or a remark, and that enforcem
 close to free. Neither held: the classification needs judgement, and each enforcement step is paid for
 in model tokens. With Claude Fable 5.2 those tokens are too expensive for the gain.
 
+Root cause found 11-19: persistence fired on non-completion. A note that did not close got
+stored, repeated and blocked again, so each failure made the mechanism spend more. The failure fed itself:
+a self-amplifying loop, not a trigger. Any revival needs a retry cap, backoff on failure, and must never
+re-fire because of its own failure.
+
 ## Status
 Shelved. To be picked up again when models are smarter and cheaper. The earlier scores in the README and
 in `tree/tripwire-print.md` (9 of 9 eval cases, the 127-message score, the retrain) are kept as history;
